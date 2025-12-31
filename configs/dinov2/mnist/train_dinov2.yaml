@@ -1,0 +1,56 @@
+tag: dinov2_mnist_pretrain
+
+meta:
+  method_name: dinov2
+  snapshot_path: /vol/research/project_storage/cache
+
+model:
+  img_size: 28
+  patch_size: 4
+  in_channels: 3
+  embedding_dim: 192
+  mlp_dim: 768
+  num_heads: 3
+  depth: 12
+  drop_path_rate: 0.1
+  ibot_separate_head: false
+  dino:
+    input_dim: 192
+    bottleneck_dim: 256
+    hidden_dim: 256
+    output_dim: 512
+
+data:
+  dataset: mnist
+  root: /scratch/ak03476/MNIST
+  batch_size: 64
+  num_workers: 4
+  global_crop_scale: [0.4, 1.0]
+  local_crop_scale: [0.05, 0.4]
+  n_local_views: 8
+  global_crops_size: 28
+  local_crops_size: 28
+  img_size: 28
+
+optimization:
+  lr: 0.001
+  min_lr: 0.000001
+  epochs: 100
+  warmup_epochs: 10
+  wd_start: 0.04
+  wd_end: 0.4
+  mom_start: 0.996
+  mom_end: 1.0
+  temp_start: 0.01
+  temp_end: 0.01
+  temp_warmup_epochs: 1
+  koleo_weight: 0.1
+
+trainer:
+  max_epochs: 100
+
+wandb:
+  project: dinov2-refactor
+  name: null
+  offline: false
+  log_model: false

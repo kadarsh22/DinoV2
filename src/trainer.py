@@ -16,6 +16,7 @@ class Trainer:
         self.epochs_run = 0
         self.unsupervised_loader = unsupervised_loader
         self.unsupervised_sampler = unsupervised_sampler
+        self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
         self.wd_scheduler = wd_scheduler
         self.total_loss_meter = AverageMeter()
@@ -137,7 +138,6 @@ class Trainer:
                                 self.koleo_loss_meter.avg,
                                 self.lr_scheduler[global_step],
                                 self.wd_scheduler[global_step],
-                                self.dino_criterion.teacher_temp_schedule[epoch],
                                 epoch,
                                 global_step
                                 )
@@ -146,14 +146,13 @@ class Trainer:
         print(f"epoch: {epoch:>02}, loss: {avg_loss:.5f}")
 
     @staticmethod
-    def _log_stats(total_loss, dino_loss, ibot_loss, koleo_loss, lr, wd, teacher_temp, epoch, global_step,):
+    def _log_stats(total_loss, dino_loss, ibot_loss, koleo_loss, lr, wd, epoch, global_step,):
         wandb.log({"train/total_loss": total_loss,
                    "train/dino_loss": dino_loss,
                    "train/ibot_loss": ibot_loss,
                    "train/koleo_loss": koleo_loss,
                    "train/lr": lr,
                    "train/wd":wd,
-                   "train/teacher_temp": teacher_temp,
                    "epoch": epoch,
                    "global_step": global_step})
 

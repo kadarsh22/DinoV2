@@ -24,6 +24,15 @@ def main(args):
 
     params = load_yaml(args.train_fname)
     eval_params = load_yaml(args.eval_fname)
+
+    params['data']['global_crop_scale'] = args.global_crop_scale
+    params['data']['local_crop_scale'] = args.local_crop_scale
+    params['optimization']['lr'] = args.lr
+    params['optimization']['temp_start'] = args.temp_start
+    params['optimization']['temp_end'] = args.temp_end
+    params['optimization']['temp_warmup_epochs'] = args.temp_warmup_epochs
+    params['optimization']['warmup_epochs'] = args.warmup_epochs
+
     params['meta']['snapshot_path'] = os.path.join(params['meta']['snapshot_path'], params['data']['dataset'], params['meta']['method_name'])
 
     if os.path.exists(params['meta']['snapshot_path']):

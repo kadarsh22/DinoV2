@@ -3,13 +3,14 @@ import pprint
 import copy
 import os
 import wandb
+import torch
 import torch.distributed as dist
 from models.dinov2 import DINOv2
 from data.data_loader import build_dataloaders
 from src.trainer import Trainer
 from evals.evaluator import Evaluator
 from helper import init_optimizers
-from utils.distributed import ddp_setup, set_seed_custom, is_main_process
+from utils.distributed import ddp_setup, set_seed_custom, is_main_process, get_world_size
 
 from torch.distributed import destroy_process_group
 from utils.utils import setup_logging, load_yaml
@@ -45,9 +46,12 @@ def main(args):
     model = DINOv2(params['model'], params['data'])
 
     (unsupervised_loader, unsupervised_sampler,
-    probe_train_loader, probe_eval_loader, attributes) = build_dataloaders(params['meta']['method_name'], params['data'])
+    probe_train_loader, probe_eval_loader, attributes) = build_dataloaders(params['meta']['method_name'], params['data'], eval_params)
 
-    optimizer, lr_scheduler, wd_scheduler = init_optimizers(model, params['optimization'], params['data']['batch_size'], unsupervised_loader)
+    num_gpus = get_world_size()
+    optimizer, lr_scheduler, wd_scheduler = init_optimizers(model, params['optimization'], 
+                                                    params['data']['batch_size_per_gpu']*num_gpus,
+                                                     unsupervised_loader)
 
     trainer = Trainer(model, unsupervised_loader, unsupervised_sampler, optimizer, lr_scheduler, wd_scheduler, params)
 
@@ -56,18 +60,20 @@ def main(args):
 
         if (epoch + 1) % params['meta']['eval_every'] == 0:
 
-            dist.barrier()
+            dist.barrier(device_ids=[torch.cuda.current_device()])
 
-            target_encoder = copy.deepcopy(trainer.model.student_backbone)
+            if dist.get_rank() == 0:
 
-            evaluator = Evaluator(target_encoder, probe_train_loader, probe_eval_loader, attributes, eval_params, logger)
+                target_encoder = copy.deepcopy(trainer.model.student_backbone)
 
-            eval_metrics = evaluator.train_and_eval_probe()
-            eval_metrics['epoch'] = epoch
-            del target_encoder, evaluator
-            wandb.log(eval_metrics)
+                evaluator = Evaluator(target_encoder, probe_train_loader, probe_eval_loader, attributes, eval_params, logger)
 
-            dist.barrier()
+                eval_metrics = evaluator.train_and_eval_probe()
+                eval_metrics['epoch'] = epoch
+                del target_encoder, evaluator
+                wandb.log(eval_metrics)
+
+            dist.barrier(device_ids=[torch.cuda.current_device()])
 
         # if (epoch + 1) % params['meta']['save_every'] == 0:
         #     trainer._save_snapshot(epoch)
@@ -80,6 +86,19 @@ if __name__ == '__main__':
     parser.add_argument('--train_fname', type=str, help='name of config file to load', default='configs/dinov2/mnist/train_dinov2.yaml')
     parser.add_argument('--eval_fname', type=str, help='name of config file to load', default='configs/dinov2/mnist/eval_dinov2.yaml')
     parser.add_argument('--seed', type=int, help='random seed', default=123)
+
+    parser.add_argument('--temp_start', type=float, help='starting temperature', default=0.9)
+    parser.add_argument('--temp_end', type=float, help='ending temperature', default=0.01)
+    parser.add_argument('--temp_warmup_epochs', type=int, help='number of warmup epochs for temperature schedule', default=1)
+
+    parser.add_argument('--global_crop_scale', type=float, nargs=2, metavar=('MIN', 'MAX'),
+                        help='min/max scale for global crops', default=[0.4, 1.0])
+    parser.add_argument('--local_crop_scale', type=float, nargs=2, metavar=('MIN', 'MAX'),
+                        help='min/max scale for local crops', default=[0.05, 0.4])
+
+    parser.add_argument('--lr', type=float, help='learning rate', default=0.001)
+    parser.add_argument('--warmup_epochs', type=int, help='number of warmup epochs for learning rate schedule', default=10)
+
 
     arguments = parser.parse_args()
     main(arguments)

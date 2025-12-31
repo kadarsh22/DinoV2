@@ -44,6 +44,7 @@ class Trainer:
         self.ibot_loss_meter.reset()
         self.koleo_loss_meter.reset()
         self.unsupervised_sampler.set_epoch(epoch)
+        self.model.train()
         for batch_idx, batch in enumerate(self.unsupervised_loader):
             global_step = epoch * num_batches + batch_idx
             views, _ = batch['views'], batch['label']
@@ -135,7 +136,8 @@ class Trainer:
                                 self.ibot_loss_meter.avg,
                                 self.koleo_loss_meter.avg,
                                 self.lr_scheduler[global_step],
-                                self.lr_scheduler[global_step],
+                                self.wd_scheduler[global_step],
+                                self.dino_criterion.teacher_temp_schedule[epoch],
                                 epoch,
                                 global_step
                                 )
@@ -144,13 +146,14 @@ class Trainer:
         print(f"epoch: {epoch:>02}, loss: {avg_loss:.5f}")
 
     @staticmethod
-    def _log_stats(total_loss, dino_loss, ibot_loss, koleo_loss, lr, wd, epoch, global_step,):
+    def _log_stats(total_loss, dino_loss, ibot_loss, koleo_loss, lr, wd, teacher_temp, epoch, global_step,):
         wandb.log({"train/total_loss": total_loss,
                    "train/dino_loss": dino_loss,
                    "train/ibot_loss": ibot_loss,
                    "train/koleo_loss": koleo_loss,
                    "train/lr": lr,
                    "train/wd":wd,
+                   "train/teacher_temp": teacher_temp,
                    "epoch": epoch,
                    "global_step": global_step})
 

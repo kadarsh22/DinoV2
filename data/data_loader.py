@@ -76,7 +76,7 @@ def _infer_dataset(data_cfg: Dict[str, Any]) -> Tuple[Dataset, Dataset, int, Any
     )
 
 
-def build_dataloaders(method_name: str, data_config):
+def build_dataloaders(method_name: str, data_config, eval_params):
     train_dataset, val_dataset, num_classes, attributes = _infer_dataset(data_config)
 
     train_size = int(0.8 * len(val_dataset))
@@ -84,9 +84,9 @@ def build_dataloaders(method_name: str, data_config):
 
     probe_train_dataset, probe_test_dataset = random_split(val_dataset, [train_size, test_size])
 
-    probe_train_loader = DataLoader(probe_train_dataset, batch_size=data_config['batch_size'], shuffle=True, drop_last=False,
+    probe_train_loader = DataLoader(probe_train_dataset, batch_size=eval_params['probe']['batch_size'], shuffle=True, drop_last=False,
                                     num_workers=data_config['num_workers'], pin_memory=True)
-    probe_test_loader = DataLoader(probe_test_dataset, batch_size=data_config['batch_size'], shuffle=True, drop_last=False,
+    probe_test_loader = DataLoader(probe_test_dataset, batch_size=eval_params['probe']['batch_size'], shuffle=True, drop_last=False,
                                    num_workers=data_config['num_workers'], pin_memory=True, )
     rank = dist.get_rank()
     world_size = dist.get_world_size()
@@ -107,7 +107,7 @@ def build_dataloaders(method_name: str, data_config):
         train_ds = DictDataset(train_dataset, x_key="views", y_key="label", transform=train_transform)
         train_sampler = torch.utils.data.distributed.DistributedSampler(dataset=train_ds, num_replicas=world_size, shuffle=True, rank=rank)
 
-        train_loader = DataLoader(train_ds, batch_size=data_config['batch_size'], drop_last=True, sampler=train_sampler,
+        train_loader = DataLoader(train_ds, batch_size=data_config['batch_size_per_gpu'], drop_last=True, sampler=train_sampler,
                                   num_workers=data_config['num_workers'], pin_memory=True, )
 
     elif method_name == "ijepa":

@@ -75,3 +75,10 @@ def ddp_setup():
 def is_main_process() -> bool:
     """Check if current process is the main (rank 0) process."""
     return not dist.is_available() or not dist.is_initialized() or dist.get_rank() == 0
+
+def get_world_size():
+    if dist.is_available() and dist.is_initialized():
+        world_size = dist.get_world_size()   # total processes across all nodes
+    else:
+        world_size = 1
+    return world_size

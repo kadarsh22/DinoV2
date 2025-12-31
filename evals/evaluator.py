@@ -19,7 +19,7 @@ class Evaluator:
         self.val_loader = probe_eval_loader
         self.attributes = attributes
         self.ce = nn.CrossEntropyLoss()
-
+    
         logging.basicConfig(stream=sys.stdout, level=logging.INFO)
         self.logger = logging.getLogger()
         if self.global_rank > 0:
@@ -32,7 +32,7 @@ class Evaluator:
         if cache_dir is None:
             cache_dir = self.params['meta']['cache_dir']
         os.makedirs(cache_dir, exist_ok=True)
-
+        self.model.eval()
         probe = self._train_probe(cache_dir)
         return self._eval_probe(probe, cache_dir, delete_cache=delete_cache)
 
@@ -110,9 +110,11 @@ class Evaluator:
         metrics: Dict[str, float] = {}
         for spec in self.attributes:
             denom = max(1, counts[spec.name])
-            metrics[f"eval/eval_{spec.name}_top1"] = correct1[spec.name] / denom
+            accuracy = (correct1[spec.name] / denom)*100
+            metrics[f"eval/eval_{spec.name}_top1"] = accuracy
+            print( f"epoch {epoch:02d} | {name:<20} " f"top1 {accuracy:6.2f}%  ({correct:>5}/{denom:<5})" )
             if self.params['probe']['log_top5']:
-                metrics[f"eval/eval_{spec.name}_top5"] = correct5[spec.name] / denom
+                metrics[f"eval/eval_{spec.name}_top5"] = (correct5[spec.name] / denom)*100
 
         return metrics
 

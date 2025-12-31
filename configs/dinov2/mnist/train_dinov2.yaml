@@ -15,7 +15,7 @@ model:
   mlp_dim: 768
   num_heads: 3
   depth: 12
-  drop_path_rate: 0.1
+  drop_path_rate: 0
   ibot_separate_head: false
   dino:
     input_dim: 192
@@ -27,7 +27,7 @@ data:
   dataset: mnist
   # root: /scratch/ak03476/MNIST
   root: /leonardo_work/EUHPC_D27_070/data/MNIST
-  batch_size: 64
+  batch_size_per_gpu: 64
   num_workers: 4
   global_crop_scale: [0.4, 1.0]
   local_crop_scale: [0.05, 0.4]
@@ -48,7 +48,7 @@ optimization:
   temp_start: 0.9
   temp_end: 0.01
   temp_warmup_epochs: 1
-  koleo_weight: 0.1
+  koleo_weight: 0
 
 trainer:
   max_epochs: 100

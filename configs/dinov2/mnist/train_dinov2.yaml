@@ -3,6 +3,8 @@ tag: dinov2_mnist_pretrain
 meta:
   method_name: dinov2
   snapshot_path: /vol/research/project_storage/cache
+  eval_every: 5
+  log_every: 100
 
 model:
   img_size: 28

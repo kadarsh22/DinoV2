@@ -9,28 +9,16 @@ from torch.utils.data import DataLoader, TensorDataset
 from evals.eval_utils import _need_cache, _cleanup_cache_dir, _load_cached
 
 class Evaluator:
-    def __init__(
-        self,
-            encoder, classifier, optimizer, scaler, scheduler,
-            wd_scheduler,  val_loader, train_loader, params, logger
-    ) -> None:
+    def __init__(self, target_encoder, probe_train_loader, probe_eval_loader, attributes, params, logger) -> None:
         self.params = params
         self.logger = logger
         self.local_rank = int(os.environ["LOCAL_RANK"])
         self.global_rank = int(os.environ["RANK"])
-        self.model = encoder.to(self.local_rank)
-        self.classifier = classifier.to(self.local_rank)
-        self.train_loader = train_loader
-        self.val_loader = val_loader
+        self.model = target_encoder.to(self.local_rank)
+        self.train_loader = probe_train_loader
+        self.val_loader = probe_eval_loader
         self.attributes = attributes
-        self.optimizer = optimizer
-        self.scheduler = scheduler
-        self.wd_scheduler = wd_scheduler
-        self.scaler = scaler
-        self.use_bf16 = self.params['optimization'].get('use_bfloat16', False)
-        self.use_fp16 = self.params['optimization'].get('use_float16', False)  # if you ever want real fp16
-        self.amp_on = self.use_bf16 or self.use_fp16
-        self.amp_dtype = torch.bfloat16 if self.use_bf16 else torch.float16
+        self.ce = nn.CrossEntropyLoss()
 
         logging.basicConfig(stream=sys.stdout, level=logging.INFO)
         self.logger = logging.getLogger()
@@ -38,46 +26,33 @@ class Evaluator:
             self.logger.setLevel(logging.ERROR)
 
         self.epochs_run = 0
-        self.classifier = DDP(self.classifier, device_ids=[self.local_rank], broadcast_buffers=False)
 
-
-    def train_and_eval_probe(self, encoder: nn.Module, cache_dir=None, delete_cache: bool = True,) -> Dict[str, float]:
+    def train_and_eval_probe(self, cache_dir=None, delete_cache: bool = True,) -> Dict[str, float]:
 
         if cache_dir is None:
-            cache_dir = "/scratch/u5de/silpa.u5de/sd/cache"
+            cache_dir = self.params['meta']['cache_dir']
         os.makedirs(cache_dir, exist_ok=True)
 
-        probe = self._train_probe(encoder, cache_dir)
-        return self._eval_probe(encoder, probe, cache_dir, delete_cache=delete_cache)
+        probe = self._train_probe(cache_dir)
+        return self._eval_probe(probe, cache_dir, delete_cache=delete_cache)
 
-    def _train_probe(
-        self,
-        encoder: nn.Module,
-        cache_dir: str,
-    ) -> nn.ModuleDict:
-        device = next(encoder.parameters()).device
+    def _train_probe(self, cache_dir) -> nn.ModuleDict:
+        device = next(self.model.parameters()).device
 
         # cache + load train split
         if _need_cache(cache_dir, "train"):
-            self._extract_and_cache(encoder, self.train_loader, device, cache_dir, "train")
-        Xtr, Atr = self._load_cached(cache_dir, "train", map_location="cpu")
+            self._extract_and_cache(self.model, self.train_loader, device, cache_dir, "train")
+        x_train, a_train = _load_cached(cache_dir, "train", map_location="cpu")
 
         train_loader_cached = DataLoader(
-            TensorDataset(Xtr, Atr),
-            batch_size=self.cfg.batch_size,
-            shuffle=True,
-            drop_last=False,
-            pin_memory=True,
-        )
+            TensorDataset(x_train, a_train),
+            batch_size=self.params['probe']['batch_size'], shuffle=True, drop_last=False, pin_memory=True,)
 
-        probe = nn.ModuleDict({
-            a.name: nn.Linear(encoder.student_backbone.vit.embed_dim, a.num_classes)
-            for a in self.attributes
-        }).to(device)
+        probe = nn.ModuleDict({a.name: nn.Linear(self.model.vit.embed_dim, a.num_classes) for a in self.attributes}).to(device)
 
-        opt = torch.optim.Adam(probe.parameters(), lr=self.cfg.lr)
+        opt = torch.optim.Adam(probe.parameters(), lr=self.params['probe']['lr'])
 
-        for _ in range(self.cfg.epochs):
+        for _ in range(self.params['probe']['epochs']):
             probe.train()
             for emb, labels in train_loader_cached:
                 emb = emb.to(device, non_blocking=True)
@@ -96,27 +71,16 @@ class Evaluator:
 
 
     @torch.no_grad()
-    def _eval_probe(
-        self,
-        encoder: nn.Module,
-        probe: nn.ModuleDict,
-        cache_dir: str,
-        delete_cache: bool = True,
-    ) -> Dict[str, float]:
-        device = next(encoder.parameters()).device
+    def _eval_probe(self, probe: nn.ModuleDict, cache_dir: str, delete_cache: bool = True,) -> Dict[str, float]:
 
-        # cache + load test split
+        device = next(self.model.parameters()).device
+
         if _need_cache(cache_dir, "test"):
-            self._extract_and_cache(encoder, self.probe_eval_loader, device, cache_dir, "test")
-        Xte, Ate = _load_cached(cache_dir, "test", map_location="cpu")
+            self._extract_and_cache(self.model, self.val_loader, device, cache_dir, "test")
+        x_test, a_test = _load_cached(cache_dir, "test", map_location="cpu")
 
-        test_loader_cached = DataLoader(
-            TensorDataset(Xte, Ate),
-            batch_size=self.cfg.batch_size,
-            shuffle=False,
-            drop_last=False,
-            pin_memory=True,
-        )
+        test_loader_cached = DataLoader(TensorDataset(x_test, a_test),
+                        batch_size=self.params['probe']['batch_size'], shuffle=False, drop_last=False, pin_memory=True,)
 
         probe.eval()
         correct1 = {a.name: 0 for a in self.attributes}
@@ -133,7 +97,7 @@ class Evaluator:
                 pred1 = scores.argmax(dim=1)
                 correct1[spec.name] += int((pred1 == labels).sum().item())
 
-                if self.cfg.log_top5:
+                if self.params['probe']['log_top5']:
                     k = min(5, spec.num_classes)
                     pred5 = scores.topk(k=k, dim=1).indices
                     correct5[spec.name] += int((pred5 == labels[:, None]).any(dim=1).sum().item())
@@ -146,28 +110,28 @@ class Evaluator:
         metrics: Dict[str, float] = {}
         for spec in self.attributes:
             denom = max(1, counts[spec.name])
-            metrics[f"{self.cfg.log_prefix}/eval_{spec.name}_top1"] = correct1[spec.name] / denom
-            if self.cfg.log_top5:
-                metrics[f"{self.cfg.log_prefix}/eval_{spec.name}_top5"] = correct5[spec.name] / denom
+            metrics[f"eval/eval_{spec.name}_top1"] = correct1[spec.name] / denom
+            if self.params['probe']['log_top5']:
+                metrics[f"eval/eval_{spec.name}_top5"] = correct5[spec.name] / denom
 
         return metrics
 
     @torch.no_grad()
     def _extract_and_cache(self, encoder, loader, device, cache_dir, split):
         os.makedirs(cache_dir, exist_ok=True)
-        X_chunks, A_chunks = [], []
+        x_chunks, a_chunks = [], []
 
         encoder.eval()
         for data, attr in loader:
             data = data.to(device, non_blocking=True)
-            feats = encoder.student_backbone.encode(data)  # [B,T,C] or [B,C]
+            feats = self.model.encode(data)  # [B,T,C] or [B,C]
             x = feats.mean(dim=1) if feats.dim() == 3 else feats
-            X_chunks.append(x.cpu())
-            A_chunks.append(attr.cpu())
+            x_chunks.append(x.cpu())
+            a_chunks.append(attr.cpu())
 
-        X = torch.cat(X_chunks, dim=0)  # [N, D]
-        A = torch.cat(A_chunks, dim=0)  # [N, K]
-        torch.save(X, os.path.join(cache_dir, f"{split}_X.pt"))
-        torch.save(A, os.path.join(cache_dir, f"{split}_A.pt"))
+        x = torch.cat(x_chunks, dim=0)  # [N, D]
+        a = torch.cat(a_chunks, dim=0)  # [N, K]
+        torch.save(x, os.path.join(cache_dir, f"{split}_X.pt"))
+        torch.save(a, os.path.join(cache_dir, f"{split}_A.pt"))
 
 

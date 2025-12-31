@@ -33,22 +33,23 @@ def main(args):
         pprint.pprint(params)
         pprint.pprint(eval_params)
 
-    # if is_main_process():
-    #     wandb.init(
-    #         project="ijepa-cmnist",
-    #         name=params['logging']['write_tag'] ,
-    #              # +'_tau_start_'+str(args.tau_start)+'_tau_end_'+str(args.tau_end)+'_warmup_' +str(args.warmup_epochs),
-    #         config=combined_config,
-    #     )
-    #     wandb.run.log_code('.')
+    if is_main_process():
+        wandb.init(
+            project="ijepa-cmnist",
+            name=params['tag'] ,
+                 # +'_tau_start_'+str(args.tau_start)+'_tau_end_'+str(args.tau_end)+'_warmup_' +str(args.warmup_epochs),
+            config=combined_config,
+        )
+        wandb.run.log_code('.')
 
     model = DINOv2(params['model'], params['data'])
+
     (unsupervised_loader, unsupervised_sampler,
     probe_train_loader, probe_eval_loader, attributes) = build_dataloaders(params['meta']['method_name'], params['data'])
 
-    optimizer, scheduler, wd_scheduler = init_optimizers(model, params['optimization'], params['data']['batch_size'], unsupervised_loader)
+    optimizer, lr_scheduler, wd_scheduler = init_optimizers(model, params['optimization'], params['data']['batch_size'], unsupervised_loader)
 
-    trainer = Trainer(model, unsupervised_loader, unsupervised_sampler, optimizer, scheduler, wd_scheduler, params)
+    trainer = Trainer(model, unsupervised_loader, unsupervised_sampler, optimizer, lr_scheduler, wd_scheduler, params)
 
     for epoch in range(trainer.epochs_run, params['optimization']['epochs']):
         trainer.train(epoch)
@@ -57,21 +58,18 @@ def main(args):
 
             dist.barrier()
 
-            target_encoder = copy.deepcopy(trainer.target_encoder)
+            target_encoder = copy.deepcopy(trainer.model.student_backbone)
 
-            opt_eval, scaler_eval, scheduler_eval, wd_scheduler_eval = init_opt_eval(classifier, eval_params['optimization']['lr'],
-                                                                use_float16=eval_params['optimization']['use_float16'],
-                                                                wd=eval_params['optimization']['weight_decay'], )
-            evaluator = Evaluator(target_encoder, classifier, opt_eval, scaler_eval, scheduler_eval,
-                                wd_scheduler_eval, val_loader, train_loader, lidar_val_loader, params, logger)
+            evaluator = Evaluator(target_encoder, probe_train_loader, probe_eval_loader, attributes, eval_params, logger)
 
-            evaluator.evaluate(epoch, eval_params['optimization']['num_epochs'], eval_linear_probe=True)
+            eval_metrics = evaluator.train_and_eval_probe()
             del target_encoder, evaluator
+            wandb.log(eval_metrics)
 
             dist.barrier()
 
-        if (epoch + 1) % params['meta']['save_every'] == 0:
-            trainer._save_snapshot(epoch)
+        # if (epoch + 1) % params['meta']['save_every'] == 0:
+        #     trainer._save_snapshot(epoch)
 
     destroy_process_group()
     wandb.finish()

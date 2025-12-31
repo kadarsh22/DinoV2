@@ -2,7 +2,7 @@ tag: dinov2_mnist_linear_probe
 
 meta:
   method_name: dinov2
-  checkpoint_path: /scratch/u5de/silpa.u5de/sd/cache
+  cache_dir: /vol/research/project_storage/cache
 
 data:
   dataset: mnist
@@ -22,3 +22,4 @@ probe:
   log_top5: false
   batch_size: 256
   use_best_checkpoint: true
+

@@ -43,7 +43,7 @@ optimization:
   wd_end: 0.4
   mom_start: 0.996
   mom_end: 1.0
-  temp_start: 0.01
+  temp_start: 0.9
   temp_end: 0.01
   temp_warmup_epochs: 1
   koleo_weight: 0.1

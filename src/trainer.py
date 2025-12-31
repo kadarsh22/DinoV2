@@ -98,7 +98,7 @@ class Trainer:
             koleo_loss = self.params['optimization']['koleo_weight']* sum(
                 self.koleo_criterion(t) for t in student_global_cls_token.chunk(2)
             )
-            loss = dino_loss + ibot_loss + koleo_loss
+            loss = dino_loss + 0*ibot_loss + 0*koleo_loss
 
             total_loss += loss.detach()
             loss.backward()

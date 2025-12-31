@@ -77,7 +77,7 @@ def main(args):
 
                 evaluator = Evaluator(target_encoder, probe_train_loader, probe_eval_loader, attributes, eval_params, logger)
 
-                eval_metrics = evaluator.train_and_eval_probe()
+                eval_metrics = evaluator.train_and_eval_probe(epoch)
                 eval_metrics['epoch'] = epoch
                 del target_encoder, evaluator
                 wandb.log(eval_metrics)

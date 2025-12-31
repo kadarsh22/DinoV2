@@ -27,14 +27,14 @@ class Evaluator:
 
         self.epochs_run = 0
 
-    def train_and_eval_probe(self, cache_dir=None, delete_cache: bool = True,) -> Dict[str, float]:
+    def train_and_eval_probe(self, epoch, cache_dir=None, delete_cache: bool = True,) -> Dict[str, float]:
 
         if cache_dir is None:
             cache_dir = self.params['meta']['cache_dir']
         os.makedirs(cache_dir, exist_ok=True)
         self.model.eval()
         probe = self._train_probe(cache_dir)
-        return self._eval_probe(probe, cache_dir, delete_cache=delete_cache)
+        return self._eval_probe(epoch, probe, cache_dir, delete_cache=delete_cache)
 
     def _train_probe(self, cache_dir) -> nn.ModuleDict:
         device = next(self.model.parameters()).device
@@ -71,7 +71,7 @@ class Evaluator:
 
 
     @torch.no_grad()
-    def _eval_probe(self, probe: nn.ModuleDict, cache_dir: str, delete_cache: bool = True,) -> Dict[str, float]:
+    def _eval_probe(self, epoch, probe: nn.ModuleDict, cache_dir: str, delete_cache: bool = True,) -> Dict[str, float]:
 
         device = next(self.model.parameters()).device
 
@@ -109,8 +109,10 @@ class Evaluator:
 
         metrics: Dict[str, float] = {}
         for spec in self.attributes:
-            denom = max(1, counts[spec.name])
-            accuracy = (correct1[spec.name] / denom)*100
+            name = spec.name
+            denom = max(1, counts[name])
+            correct = correct1[name]
+            accuracy = (correct / denom) * 100
             metrics[f"eval/eval_{spec.name}_top1"] = accuracy
             print( f"epoch {epoch:02d} | {name:<20} " f"top1 {accuracy:6.2f}%  ({correct:>5}/{denom:<5})" )
             if self.params['probe']['log_top5']:

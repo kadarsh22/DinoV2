@@ -30,7 +30,7 @@ class DINOv2(Module):
             self,
             model_config,
             data_config,
-            ibot_separate_head: bool = False,
+            ibot_separate_head: bool = True,
     ) -> None:
         super().__init__()
 

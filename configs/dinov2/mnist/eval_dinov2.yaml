@@ -2,11 +2,13 @@ tag: dinov2_mnist_linear_probe
 
 meta:
   method_name: dinov2
-  cache_dir: /vol/research/project_storage/cache
+  # cache_dir: /vol/research/project_storage/cache
+  cache_dir: /leonardo_work/EUHPC_D27_070/cache
 
 data:
   dataset: mnist
-  root: /scratch/ak03476/MNIST
+  # root: /scratch/ak03476/MNIST
+  root: /leonardo_work/EUHPC_D27_070/data/MNIST
   batch_size: 64
   num_workers: 4
 

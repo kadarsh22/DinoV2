@@ -2,7 +2,8 @@ tag: dinov2_mnist_pretrain
 
 meta:
   method_name: dinov2
-  snapshot_path: /vol/research/project_storage/cache
+  # snapshot_path: /vol/research/project_storage/cache
+  snapshot_path: /leonardo_work/EUHPC_D27_070/cache
   eval_every: 5
   log_every: 100
 
@@ -24,7 +25,8 @@ model:
 
 data:
   dataset: mnist
-  root: /scratch/ak03476/MNIST
+  # root: /scratch/ak03476/MNIST
+  root: /leonardo_work/EUHPC_D27_070/data/MNIST
   batch_size: 64
   num_workers: 4
   global_crop_scale: [0.4, 1.0]
@@ -52,7 +54,7 @@ trainer:
   max_epochs: 100
 
 wandb:
-  project: dinov2-refactor
+  project: ijepa-cmnist
   name: null
   offline: false
   log_model: false

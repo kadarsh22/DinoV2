@@ -74,7 +74,7 @@ def main(args):
 
             if dist.get_rank() == 0:
 
-                target_encoder = copy.deepcopy(trainer.student.backbone)
+                target_encoder = copy.deepcopy(trainer.student.module.backbone)
 
                 evaluator = Evaluator(target_encoder, probe_train_loader, probe_eval_loader, attributes, eval_params, logger)
 

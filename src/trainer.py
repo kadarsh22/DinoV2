@@ -123,17 +123,10 @@ class Trainer:
                 student_out=s_dino_all.chunk(len(views)),
             )
 
-            # iBOT compares masked tokens (locals contribute zero masked tokens)
-            ibot_loss = self.ibot_criterion(
-                teacher_out=t_ibot,
-                student_out=s_ibot_masked,
-                mask=block_mask,
-            )
+            ibot_loss = self.ibot_criterion(teacher_out=t_ibot, student_out=s_ibot_masked, mask=block_mask,)
 
             s_cls_global = s_cls_all[:B_global]  # [2B,C]
-            koleo_loss = self.params["optimization"]["koleo_weight"] * sum(
-                self.koleo_criterion(t) for t in s_cls_global.chunk(2)
-            )
+            koleo_loss = self.params["optimization"]["koleo_weight"] * sum(self.koleo_criterion(t) for t in s_cls_global.chunk(2))
 
             loss = dino_loss + 0*ibot_loss + 0*koleo_loss
 

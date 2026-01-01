@@ -30,7 +30,9 @@ class Evaluator:
     def train_and_eval_probe(self, epoch, cache_dir=None, delete_cache: bool = True,) -> Dict[str, float]:
 
         if cache_dir is None:
-            cache_dir = self.params['meta']['cache_dir']
+            base_cache = self.params["meta"]["cache_dir"]
+            job_id = os.environ.get("SLURM_JOB_ID") or os.environ.get("SLURM_ARRAY_JOB_ID") or "nojid"
+            cache_dir = os.path.join(base_cache, str(job_id))
         os.makedirs(cache_dir, exist_ok=True)
         self.model.eval()
         probe = self._train_probe(cache_dir)
@@ -121,11 +123,11 @@ class Evaluator:
         return metrics
 
     @torch.no_grad()
-    def _extract_and_cache(self, encoder, loader, device, cache_dir, split):
+    def _extract_and_cache(self, loader, device, cache_dir, split):
         os.makedirs(cache_dir, exist_ok=True)
         x_chunks, a_chunks = [], []
 
-        encoder.eval()
+        self.model.eval()
         for data, attr in loader:
             data = data.to(device, non_blocking=True)
             feats = self.model.encode(data)  # [B,T,C] or [B,C]

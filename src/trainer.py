@@ -104,7 +104,7 @@ class Trainer:
             )
             loss = dino_loss + 0*ibot_loss + 0*koleo_loss
 
-            total_loss += loss.detach().item()
+            total_loss += loss.detach()
             loss.backward()
 
 

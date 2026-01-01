@@ -53,7 +53,7 @@ def main(args):
         )
         wandb.run.log_code('.')
 
-    model = DINOv2(params['model'], params['data'])
+    model = DINOv2(params['model'], params['data']).to(int(os.environ["LOCAL_RANK"]))
 
     (unsupervised_loader, unsupervised_sampler,
     probe_train_loader, probe_eval_loader, attributes) = build_dataloaders(params['meta']['method_name'], params['data'], eval_params)

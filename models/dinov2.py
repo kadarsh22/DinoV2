@@ -24,6 +24,8 @@ class DINOv2(Module):
         vit = vit_tiny_patch4_28(pos_embed="learn", dynamic_img_size=False, init_values=1e-5)
         teacher_backbone = MaskedVisionTransformerTIMM(vit=vit, antialias=False, pos_embed_initialization="skip")
         student_backbone = copy.deepcopy(teacher_backbone)
+        teacher_backbone.vit.reset_classifier(0)
+        student_backbone.vit.reset_classifier(0)
 
         update_drop_path_rate(
             student_backbone.vit,
@@ -63,26 +65,20 @@ class DINOv2Head(Module):
         self.ibot_head = ibot_head
 
 
-class DINOv2Student(Module):
+class DINOv2Student(torch.nn.Module):
     def __init__(self, backbone, dino_head, ibot_head) -> None:
         super().__init__()
         self.backbone = backbone
         self.dino_head = dino_head
         self.ibot_head = ibot_head
 
-    def forward(self, x: Tensor, mask: Tensor | None = None, return_ibot: bool = False,):
-        feats = self.backbone.encode(x, mask=mask)      # [B, T, C]
-        cls = feats[:, 0]                               # [B, C]
-        dino_out = self.dino_head(cls)                  # [B, D]
-
-        if not return_ibot:
-            return dino_out
-
-        if mask is None:
-            raise ValueError("return_ibot=True requires a mask (so we can select masked patches).")
-
-        ibot_out = self.ibot_head(feats[mask])          # [num_masked_tokens, D]
-        return dino_out, ibot_out
+    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None):
+        feats = self.backbone.encode(x, mask=mask)
+        cls = feats[:, 0]                      # [B, C]
+        dino_out = self.dino_head(cls)         # [B, D]
+        masked_tokens = feats[mask]
+        ibot_out = self.ibot_head(masked_tokens)   # [N_masked, D] (or [0, D])
+        return dino_out, ibot_out, cls
 
 
 class DINOv2Teacher(Module):

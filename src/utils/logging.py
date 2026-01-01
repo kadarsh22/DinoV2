@@ -6,6 +6,14 @@
 #
 
 import torch
+import torch.distributed as dist
+
+def ddp_mean(t: torch.Tensor):
+    if dist.is_available() and dist.is_initialized():
+        t = t.clone()
+        dist.all_reduce(t, op=dist.ReduceOp.SUM)
+        t /= dist.get_world_size()
+    return t
 
 
 def gpu_timer(closure, log_timings=True):

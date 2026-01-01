@@ -4,7 +4,8 @@ import os
 import random
 import wandb
 import numpy as np
-from src.utils.logging import AverageMeter
+from torch.nn.parallel import DistributedDataParallel as DDP
+from src.utils.logging import AverageMeter, ddp_mean
 from lightly.loss import DINOLoss, IBOTPatchLoss, KoLeoLoss
 from lightly.models.utils import (random_block_mask, update_momentum,)
 from lightly.utils.scheduler import cosine_schedule
@@ -27,6 +28,7 @@ class Trainer:
         self.local_rank = int(os.environ["LOCAL_RANK"])
         self.global_rank = int(os.environ["RANK"])
         self.model = model.to(self.local_rank)
+        self.model = DDP(self.model, device_ids=[self.local_rank])
         self.dino_criterion = DINOLoss(output_dim=self.params['model']['dino']['output_dim'],
                                 warmup_teacher_temp = self.params['optimization']['temp_start'],
                                 teacher_temp = self.params['optimization']['temp_end'],
@@ -54,11 +56,11 @@ class Trainer:
 
             # Masking
             B = len(global_views)
-            sequence_length = self.model.teacher_backbone.sequence_length
+            sequence_length = self.model.module.teacher_backbone.sequence_length
             mask = global_views.new_zeros((B, sequence_length), dtype=torch.bool)
 
             # Mask patches except class token.
-            H, W = self.model.teacher_backbone.vit.patch_embed.grid_size
+            H, W = self.model.module.teacher_backbone.vit.patch_embed.grid_size
             assert (
                 H * W == sequence_length - 1
             ), f"Unexpected grid size: {H}x{W}, sequence_length {sequence_length}"
@@ -67,9 +69,9 @@ class Trainer:
 
             # Teacher forward
             with torch.no_grad():
-                teacher_cls_token, teacher_features = self.model.forward_teacher(global_views)
-                teacher_cls_out = self.model.teacher_head.dino_head.forward(teacher_cls_token)
-                teacher_masked_out = self.model.teacher_head.ibot_head.forward(
+                teacher_cls_token, teacher_features = self.model.module.forward_teacher(global_views)
+                teacher_cls_out = self.model.module.teacher_head.dino_head.forward(teacher_cls_token)
+                teacher_masked_out = self.model.module.teacher_head.ibot_head.forward(
                     teacher_features[mask]
                 )
 
@@ -77,15 +79,15 @@ class Trainer:
             (
                 student_global_cls_token,
                 student_global_masked_features,
-            ) = self.model.forward_student(global_views, mask=mask)
-            student_global_cls_out = self.model.student_head.dino_head.forward(
+            ) = self.model.module.forward_student(global_views, mask=mask)
+            student_global_cls_out = self.model.module.student_head.dino_head.forward(
                 student_global_cls_token
             )
-            student_global_masked_out = self.model.student_head.ibot_head.forward(
+            student_global_masked_out = self.model.module.student_head.ibot_head.forward(
                 student_global_masked_features
             )
-            student_local_cls_token, _ = self.model.forward_student(local_views, mask=None)
-            student_local_cls_out = self.model.student_head.dino_head.forward(
+            student_local_cls_token, _ = self.model.module.forward_student(local_views, mask=None)
+            student_local_cls_out = self.model.module.student_head.dino_head.forward(
                 student_local_cls_token
             )
             student_cls_out = torch.cat([student_global_cls_out, student_local_cls_out])
@@ -102,34 +104,36 @@ class Trainer:
             )
             loss = dino_loss + 0*ibot_loss + 0*koleo_loss
 
-            total_loss += loss.detach()
+            total_loss += loss.detach().item()
             loss.backward()
 
+
+            # Update weight decay directly for all parameter groups.
+            for param_group in self.optimizer.param_groups:
+                param_group["lr"] = self.lr_scheduler[global_step]
+                if param_group["weight_decay"] != 0.0:
+                    param_group["weight_decay"] = self.wd_scheduler[global_step]
+            
             # Optionally zero out the learning rate of the last layer.
             if epoch < 1:
                 for param_group in self.optimizer.param_groups:
                     if "last_layer" in param_group:
                         param_group["lr"] = 0.0
 
-            # Update weight decay directly for all parameter groups.
-            for param_group in self.optimizer.param_groups:
-                param_group["lr"] = self.lr_scheduler[global_step]
-                if param_group["weight_decay"] != 0.0:
-                    param_group["weight_decay"] = self.lr_scheduler[global_step]
-
             self.optimizer.step()
             self.optimizer.zero_grad()
-            self.total_loss_meter.update(loss)
-            self.dino_loss_meter.update(dino_loss)
-            self.ibot_loss_meter.update(ibot_loss)
-            self.koleo_loss_meter.update(koleo_loss)
+            self.total_loss_meter.update(loss.item())
+            self.dino_loss_meter.update(dino_loss.item())
+            self.ibot_loss_meter.update(ibot_loss.item())
+            self.koleo_loss_meter.update(koleo_loss.item())
 
             # Momentum update teacher.
             momentum = cosine_schedule(step=global_step, max_steps=total_steps,
                                        start_value=self.params['optimization']['mom_start'],
                                        end_value=self.params['optimization']['mom_end'])
-            update_momentum(self.model.student_backbone, self.model.teacher_backbone, m=momentum)
-            update_momentum(self.model.student_head, self.model.teacher_head, m=momentum)
+            with torch.no_grad():
+                update_momentum(self.model.module.student_backbone, self.model.module.teacher_backbone, m=momentum)
+                update_momentum(self.model.module.student_head, self.model.module.teacher_head, m=momentum)
 
             if self.global_rank == 0 and global_step % self.params['meta']['log_every'] == 0:
                 self._log_stats(self.total_loss_meter.avg,
@@ -143,7 +147,9 @@ class Trainer:
                                 )
 
         avg_loss = total_loss / len(self.unsupervised_loader)
-        print(f"epoch: {epoch:>02}, loss: {avg_loss:.5f}")
+        avg_loss = ddp_mean(avg_loss)
+        if self.global_rank == 0:
+            print(f"epoch: {epoch:02d}, loss: {avg_loss.item():.5f}")
 
     @staticmethod
     def _log_stats(total_loss, dino_loss, ibot_loss, koleo_loss, lr, wd, epoch, global_step,):

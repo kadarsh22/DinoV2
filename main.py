@@ -2,6 +2,7 @@ import argparse
 import pprint
 import copy
 import os
+import sys
 import wandb
 import torch
 import torch.distributed as dist
@@ -69,11 +70,11 @@ def main(args):
 
         if (epoch + 1) % params['meta']['eval_every'] == 0:
 
-            dist.barrier(device_ids=[torch.cuda.current_device()])
+            dist.barrier()
 
             if dist.get_rank() == 0:
 
-                target_encoder = copy.deepcopy(trainer.model.student_backbone)
+                target_encoder = copy.deepcopy(trainer.model.module.student_backbone)
 
                 evaluator = Evaluator(target_encoder, probe_train_loader, probe_eval_loader, attributes, eval_params, logger)
 
@@ -82,13 +83,17 @@ def main(args):
                 del target_encoder, evaluator
                 wandb.log(eval_metrics)
 
-            dist.barrier(device_ids=[torch.cuda.current_device()])
+            dist.barrier()
+        
+        if epoch > 11:
+            sys.exit()
 
         # if (epoch + 1) % params['meta']['save_every'] == 0:
         #     trainer._save_snapshot(epoch)
 
     destroy_process_group()
-    wandb.finish()
+    if is_main_process():
+        wandb.finish()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

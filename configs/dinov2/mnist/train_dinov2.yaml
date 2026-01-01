@@ -1,4 +1,4 @@
-tag: dinov2_mnist_pretrain
+tag: dinov2_mnist_pretrain_reproducability_1
 
 meta:
   method_name: dinov2

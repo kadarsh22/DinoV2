@@ -82,7 +82,8 @@ def build_dataloaders(method_name: str, data_config, eval_params):
     train_size = int(0.8 * len(val_dataset))
     test_size = int(0.2 * len(val_dataset))
 
-    probe_train_dataset, probe_test_dataset = random_split(val_dataset, [train_size, test_size])
+    g = torch.Generator().manual_seed(123)
+    probe_train_dataset, probe_test_dataset = random_split(val_dataset, [train_size, test_size],  generator=g)
 
     probe_train_loader = DataLoader(probe_train_dataset, batch_size=eval_params['probe']['batch_size'], shuffle=True, drop_last=False,
                                     num_workers=data_config['num_workers'], pin_memory=True)

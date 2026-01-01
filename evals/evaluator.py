@@ -43,7 +43,7 @@ class Evaluator:
 
         # cache + load train split
         if _need_cache(cache_dir, "train"):
-            self._extract_and_cache(self.model, self.train_loader, device, cache_dir, "train")
+            self._extract_and_cache(self.train_loader, device, cache_dir, "train")
         x_train, a_train = _load_cached(cache_dir, "train", map_location="cpu")
 
         train_loader_cached = DataLoader(
@@ -78,7 +78,7 @@ class Evaluator:
         device = next(self.model.parameters()).device
 
         if _need_cache(cache_dir, "test"):
-            self._extract_and_cache(self.model, self.val_loader, device, cache_dir, "test")
+            self._extract_and_cache(self.val_loader, device, cache_dir, "test")
         x_test, a_test = _load_cached(cache_dir, "test", map_location="cpu")
 
         test_loader_cached = DataLoader(TensorDataset(x_test, a_test),

@@ -104,7 +104,7 @@ class Trainer:
             )
             loss = dino_loss + 0*ibot_loss + 0*koleo_loss
 
-            total_loss += loss.detach()
+            total_loss += ddp_mean(loss.detach())
             loss.backward()
 
 
@@ -147,7 +147,6 @@ class Trainer:
                                 )
 
         avg_loss = total_loss / len(self.unsupervised_loader)
-        avg_loss = ddp_mean(avg_loss)
         if self.global_rank == 0:
             print(f"epoch: {epoch:02d}, loss: {avg_loss.item():.5f}")
 

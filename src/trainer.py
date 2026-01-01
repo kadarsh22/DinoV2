@@ -1,229 +1,183 @@
 from __future__ import annotations
-import torch
 import os
-import random
+import torch
+import torch.distributed as dist
 import wandb
-import numpy as np
 from torch.nn.parallel import DistributedDataParallel as DDP
+
 from src.utils.logging import AverageMeter, ddp_mean
 from lightly.loss import DINOLoss, IBOTPatchLoss, KoLeoLoss
-from lightly.models.utils import (random_block_mask, update_momentum,)
+from lightly.models.utils import random_block_mask, update_momentum
 from lightly.utils.scheduler import cosine_schedule
 
 
+@torch.no_grad()
+def checksum(module):
+    s = torch.zeros((), device=torch.cuda.current_device())
+    for p in module.parameters():
+        if p.requires_grad:
+            s += p.detach().float().sum()
+    return s
+
+
 class Trainer:
-    def __init__(self, model, unsupervised_loader, unsupervised_sampler, optimizer, lr_scheduler, wd_scheduler, params) -> None:
+    def __init__(self, model, unsupervised_loader, unsupervised_sampler,
+                 optimizer, lr_scheduler, wd_scheduler, params) -> None:
         self.params = params
         self.epochs_run = 0
+
         self.unsupervised_loader = unsupervised_loader
         self.unsupervised_sampler = unsupervised_sampler
+
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
         self.wd_scheduler = wd_scheduler
+
         self.total_loss_meter = AverageMeter()
         self.dino_loss_meter = AverageMeter()
         self.ibot_loss_meter = AverageMeter()
         self.koleo_loss_meter = AverageMeter()
-        self.time_meter = AverageMeter()
-        self.local_rank = int(os.environ["LOCAL_RANK"])
-        self.global_rank = int(os.environ["RANK"])
-        self.model = model.to(self.local_rank)
-        self.model = DDP(self.model, device_ids=[self.local_rank])
-        self.dino_criterion = DINOLoss(output_dim=self.params['model']['dino']['output_dim'],
-                                warmup_teacher_temp = self.params['optimization']['temp_start'],
-                                teacher_temp = self.params['optimization']['temp_end'],
-                                warmup_teacher_temp_epochs = self.params['optimization']['temp_warmup_epochs']).to(self.local_rank)
-        self.ibot_criterion = IBOTPatchLoss(output_dim=self.params['model']['dino']['output_dim'],
-                                            teacher_temp = self.params['optimization']['temp_end']).to(self.local_rank)
-        self.koleo_criterion = KoLeoLoss().to(self.local_rank)
-        self.optimizer = optimizer
 
-    def train(self, epoch):
+        self.local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+        self.global_rank = int(os.environ.get("RANK", "0"))
+
+        # ---- student DDP ----
+        model = model.to(self.local_rank)
+        self.student = model.student.to(self.local_rank)
+        self.student = DDP(self.student, device_ids=[self.local_rank],
+                           broadcast_buffers=False, find_unused_parameters=True)  # keep True while iBOT exists but is disabled)
+
+        # ---- teacher frozen, not DDP ----
+        self.teacher = model.teacher.to(self.local_rank)
+        self.teacher.eval()
+        for p in self.teacher.parameters():
+            p.requires_grad_(False)
+
+        self.dino_criterion = DINOLoss(
+            output_dim=self.params["model"]["dino"]["output_dim"],
+            warmup_teacher_temp=self.params["optimization"]["temp_start"],
+            teacher_temp=self.params["optimization"]["temp_end"],
+            warmup_teacher_temp_epochs=self.params["optimization"]["temp_warmup_epochs"],
+        ).to(self.local_rank)
+
+        self.ibot_criterion = IBOTPatchLoss(
+            output_dim=self.params["model"]["dino"]["output_dim"],
+            teacher_temp=self.params["optimization"]["temp_end"],
+        ).to(self.local_rank)
+
+        self.koleo_criterion = KoLeoLoss().to(self.local_rank)
+
+        # Toggle flags (so it’s obvious)
+        self.use_ibot = False
+        self.use_koleo = False
+
+    def train(self, epoch: int):
         num_batches = len(self.unsupervised_loader)
-        total_steps = self.params['optimization']['epochs'] * num_batches
-        total_loss = 0
+        total_steps = self.params["optimization"]["epochs"] * num_batches
+
+        total_loss = torch.zeros((), device=self.local_rank)
+
         self.total_loss_meter.reset()
         self.dino_loss_meter.reset()
         self.ibot_loss_meter.reset()
         self.koleo_loss_meter.reset()
-        self.unsupervised_sampler.set_epoch(epoch)
-        self.model.train()
+
+        if self.unsupervised_sampler is not None:
+            self.unsupervised_sampler.set_epoch(epoch)
+
+        self.student.train()
+        self.teacher.eval()
+
         for batch_idx, batch in enumerate(self.unsupervised_loader):
             global_step = epoch * num_batches + batch_idx
-            views, _ = batch['views'], batch['label']
-            global_views = torch.cat(views[:2]).to(self.local_rank)
-            local_views = torch.cat(views[2:]).to(self.local_rank)
 
-            # Masking
-            B = len(global_views)
-            sequence_length = self.model.module.teacher_backbone.sequence_length
+            views = batch["views"]
+            global_views = torch.cat(views[:2]).to(self.local_rank, non_blocking=True)
+            local_views = torch.cat(views[2:]).to(self.local_rank, non_blocking=True)
+
+            # ---- Masking ----
+            B = global_views.shape[0]
+            sequence_length = self.teacher.backbone.sequence_length
             mask = global_views.new_zeros((B, sequence_length), dtype=torch.bool)
 
-            # Mask patches except class token.
-            H, W = self.model.module.teacher_backbone.vit.patch_embed.grid_size
-            assert (
-                H * W == sequence_length - 1
-            ), f"Unexpected grid size: {H}x{W}, sequence_length {sequence_length}"
+            H, W = self.teacher.backbone.vit.patch_embed.grid_size
+            assert H * W == sequence_length - 1, f"Unexpected grid size {H}x{W}, seq_len {sequence_length}"
+
             block_mask = random_block_mask(size=(B, H, W), device=mask.device)
             mask[:, 1:] = block_mask.flatten(start_dim=1)
 
-            # Teacher forward
+            # ---- Teacher forward (ONCE) ----
             with torch.no_grad():
-                teacher_cls_token, teacher_features = self.model.module.forward_teacher(global_views)
-                teacher_cls_out = self.model.module.teacher_head.dino_head.forward(teacher_cls_token)
-                teacher_masked_out = self.model.module.teacher_head.ibot_head.forward(
-                    teacher_features[mask]
+                t_cls, t_feats = self.teacher.forward_backbone(global_views)
+                t_out = self.teacher.head.dino_head(t_cls)  # [2B, D]
+
+                if self.use_ibot:
+                    t_masked_out = self.teacher.head.ibot_head(t_feats[mask])
+
+            all_views = torch.cat([global_views, local_views], dim=0)  # [(2+n_local)*B, C, H, W]
+
+            seq_len = self.teacher.backbone.sequence_length
+            mask_global = mask  # [2B, seq_len] (already built)
+            mask_local = torch.zeros((local_views.shape[0], seq_len),
+                                     dtype=torch.bool,
+                                     device=mask.device)
+            all_mask = torch.cat([mask_global, mask_local], dim=0)  # [(2+n_local)*B, seq_len]
+
+            s_out = self.student(all_views, mask=all_mask)  # [(2+n_local)*B, D]
+
+            # ---- Loss (DINO only for now) ----
+            dino_loss = self.dino_criterion(
+                teacher_out=t_out.chunk(2),
+                student_out=s_out.chunk(len(views)),
+            )
+            loss = dino_loss
+
+            # ---- Schedules: apply BEFORE optimizer.step() ----
+            lr = float(self.lr_scheduler[global_step])
+            wd = float(self.wd_scheduler[global_step])
+            for pg in self.optimizer.param_groups:
+                pg["lr"] = lr
+                if pg.get("weight_decay", 0.0) != 0.0:
+                    pg["weight_decay"] = wd
+
+            self.optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            self.optimizer.step()
+
+            # ---- Logging stats (global mean) ----
+            loss_avg = ddp_mean(loss.detach())
+            dino_avg = ddp_mean(dino_loss.detach())
+
+            total_loss += loss_avg
+            self.total_loss_meter.update(loss_avg.item())
+            self.dino_loss_meter.update(dino_avg.item())
+
+            # ---- EMA teacher update (match modules) ----
+            momentum = cosine_schedule(
+                step=global_step,
+                max_steps=total_steps,
+                start_value=self.params["optimization"]["mom_start"],
+                end_value=self.params["optimization"]["mom_end"],
+            )
+            with torch.no_grad():
+                s_mod = self.student.module
+                update_momentum(s_mod.backbone, self.teacher.backbone, m=momentum)
+                update_momentum(s_mod.dino_head, self.teacher.head.dino_head, m=momentum)
+                if self.use_ibot:
+                    update_momentum(s_mod.ibot_head, self.teacher.head.ibot_head, m=momentum)
+
+            if self.global_rank == 0 and global_step % self.params["meta"]["log_every"] == 0:
+                wandb.log(
+                    {
+                        "train/total_loss": self.total_loss_meter.avg,
+                        "train/dino_loss": self.dino_loss_meter.avg,
+                        "train/lr": lr,
+                        "train/wd": wd,
+                        "epoch": epoch,
+                        "global_step": global_step,
+                    }
                 )
 
-            # Student forward
-            (
-                student_global_cls_token,
-                student_global_masked_features,
-            ) = self.model.module.forward_student(global_views, mask=mask)
-            student_global_cls_out = self.model.module.student_head.dino_head.forward(
-                student_global_cls_token
-            )
-            student_global_masked_out = self.model.module.student_head.ibot_head.forward(
-                student_global_masked_features
-            )
-            student_local_cls_token, _ = self.model.module.forward_student(local_views, mask=None)
-            student_local_cls_out = self.model.module.student_head.dino_head.forward(
-                student_local_cls_token
-            )
-            student_cls_out = torch.cat([student_global_cls_out, student_local_cls_out])
-
-
-            dino_loss = self.dino_criterion(teacher_out=teacher_cls_out.chunk(2),
-                                            student_out=student_cls_out.chunk(len(views)))
-
-
-            ibot_loss = self.ibot_criterion(teacher_out=teacher_masked_out, student_out=student_global_masked_out,
-                                            mask=block_mask)
-            koleo_loss = self.params['optimization']['koleo_weight']* sum(
-                self.koleo_criterion(t) for t in student_global_cls_token.chunk(2)
-            )
-            loss = dino_loss + 0*ibot_loss + 0*koleo_loss
-
-            total_loss += ddp_mean(loss.detach())
-            loss.backward()
-
-
-            # Update weight decay directly for all parameter groups.
-            for param_group in self.optimizer.param_groups:
-                param_group["lr"] = self.lr_scheduler[global_step]
-                if param_group["weight_decay"] != 0.0:
-                    param_group["weight_decay"] = self.wd_scheduler[global_step]
-            
-            # Optionally zero out the learning rate of the last layer.
-            if epoch < 1:
-                for param_group in self.optimizer.param_groups:
-                    if "last_layer" in param_group:
-                        param_group["lr"] = 0.0
-
-            self.optimizer.step()
-            self.optimizer.zero_grad()
-            self.total_loss_meter.update(loss.item())
-            self.dino_loss_meter.update(dino_loss.item())
-            self.ibot_loss_meter.update(ibot_loss.item())
-            self.koleo_loss_meter.update(koleo_loss.item())
-
-            # Momentum update teacher.
-            momentum = cosine_schedule(step=global_step, max_steps=total_steps,
-                                       start_value=self.params['optimization']['mom_start'],
-                                       end_value=self.params['optimization']['mom_end'])
-            with torch.no_grad():
-                update_momentum(self.model.module.student_backbone, self.model.module.teacher_backbone, m=momentum)
-                update_momentum(self.model.module.student_head, self.model.module.teacher_head, m=momentum)
-
-            if self.global_rank == 0 and global_step % self.params['meta']['log_every'] == 0:
-                self._log_stats(self.total_loss_meter.avg,
-                                self.dino_loss_meter.avg,
-                                self.ibot_loss_meter.avg,
-                                self.koleo_loss_meter.avg,
-                                self.lr_scheduler[global_step],
-                                self.wd_scheduler[global_step],
-                                epoch,
-                                global_step
-                                )
-
-        avg_loss = total_loss / len(self.unsupervised_loader)
+        avg_loss = total_loss / num_batches
         if self.global_rank == 0:
             print(f"epoch: {epoch:02d}, loss: {avg_loss.item():.5f}")
-
-    @staticmethod
-    def _log_stats(total_loss, dino_loss, ibot_loss, koleo_loss, lr, wd, epoch, global_step,):
-        wandb.log({"train/total_loss": total_loss,
-                   "train/dino_loss": dino_loss,
-                   "train/ibot_loss": ibot_loss,
-                   "train/koleo_loss": koleo_loss,
-                   "train/lr": lr,
-                   "train/wd":wd,
-                   "epoch": epoch,
-                   "global_step": global_step})
-
-
-    def _save_snapshot(self, epoch):
-        if self.global_rank == 0:
-            snapshot = {
-                'encoder': self.encoder.module.state_dict(),
-                'predictor': self.predictor.module.state_dict(),
-                'target_encoder': self.target_encoder.state_dict(),
-                'opt': self.optimizer.state_dict(),
-                'scaler': None if self.scaler is None else self.scaler.state_dict(),
-                'epoch': epoch,
-                'global_step': self.global_step,
-                'scheduler_step': self.scheduler._step,
-                'torch_rng_state': torch.get_rng_state(),
-                'cuda_rng_state': torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
-                "python_random_state": random.getstate(),
-                "numpy_rng_state": np.random.get_state(),
-                "wandb_run_id" : wandb.run.id
-            }
-            os.makedirs(self.snapshot_path, exist_ok=True)
-            save_path = f"{self.snapshot_path}/train_epoch{epoch}.pt"
-            torch.save(snapshot, save_path)
-            print(f"Epoch {epoch} | Training snapshot saved at {save_path}")
-
-    def _load_snapshot(self, snapshot_path):
-        loc = f"cuda:{self.local_rank}"
-        snapshot = torch.load(snapshot_path, map_location=loc, weights_only=False)
-        self.encoder.load_state_dict(snapshot["encoder"])
-        self.predictor.load_state_dict(snapshot["predictor"])
-        state_dict = snapshot["target_encoder"]
-
-        # Handle DDP / DataParallel checkpoints
-        if any(k.startswith("module.") for k in state_dict.keys()):
-            state_dict = {k[len("module."):]: v for k, v in state_dict.items()}
-        msg = self.target_encoder.load_state_dict(state_dict)
-        self.logger.info(f'loaded pretrained model with msg: {msg}')
-        self.logger.info(f'loaded pretrained encoder from epoch: {snapshot["epoch"]}\n path: {snapshot_path}')
-        self.optimizer.load_state_dict(snapshot["opt"])
-        if snapshot["scaler"] is not None:
-            self.scaler.load_state_dict(snapshot["scaler"])
-        self.epochs_run = snapshot["epoch"] + 1
-        self.scheduler.optimizer = self.optimizer
-        self.wd_scheduler.optimizer = self.optimizer
-        self.scheduler._step = snapshot["scheduler_step"]
-        self.wd_scheduler._step = snapshot["scheduler_step"]
-        self.global_step = snapshot["global_step"] + 1
-        rng_state = snapshot.get("torch_rng_state", None)
-
-        if rng_state is not None:
-            if not isinstance(rng_state, torch.ByteTensor):
-                rng_state = torch.tensor(rng_state, dtype=torch.uint8)
-
-            rng_state = rng_state.cpu().type(torch.ByteTensor)
-            torch.set_rng_state(rng_state)
-
-        cuda_rng_state = snapshot.get("cuda_rng_state", None)
-        if cuda_rng_state is not None and torch.cuda.is_available():
-            fixed_states = []
-            for s in cuda_rng_state:
-                state_tensor = s.cpu()
-                state_tensor = state_tensor.type(torch.ByteTensor)
-                fixed_states.append(state_tensor)
-            torch.cuda.set_rng_state_all(fixed_states)
-
-        random.setstate(snapshot["python_random_state"])
-        np.random.set_state(snapshot["numpy_rng_state"])
-        print(f"Resuming training from snapshot at Epoch {self.epochs_run}")

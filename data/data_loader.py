@@ -106,7 +106,7 @@ def build_dataloaders(method_name: str, data_config, eval_params):
             return dino_tf(img)
 
         train_ds = DictDataset(train_dataset, x_key="views", y_key="label", transform=train_transform)
-        train_sampler = torch.utils.data.distributed.DistributedSampler(dataset=train_ds, num_replicas=world_size, shuffle=True, rank=rank)
+        train_sampler = torch.utils.data.distributed.DistributedSampler(dataset=train_ds, num_replicas=world_size, shuffle=True, drop_last=True, rank=rank)
 
         train_loader = DataLoader(train_ds, batch_size=data_config['batch_size_per_gpu'], drop_last=True, sampler=train_sampler,
                                   num_workers=data_config['num_workers'], pin_memory=True, )

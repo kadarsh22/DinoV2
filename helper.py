@@ -3,7 +3,7 @@ from torch.optim import AdamW
 
 
 def init_optimizers(model, optim_config, batch_size, train_loader):
-    optimizer = AdamW(model.student.parameters(), lr=optim_config['lr'])
+    optimizer = AdamW(model.parameters(), lr=optim_config['lr'])
     lr_scheduler = cosine_scheduler(optim_config['lr'] * (batch_size / 256.),
                                    optim_config['min_lr'], optim_config['epochs'], len(train_loader),
                                    warmup_epochs=optim_config['warmup_epochs'])

@@ -21,7 +21,7 @@ def checksum(module):
 
 
 class Trainer:
-    def __init__(self, model, unsupervised_loader, unsupervised_sampler,
+    def __init__(self, student_model, teacher_model, unsupervised_loader, unsupervised_sampler,
                  optimizer, lr_scheduler, wd_scheduler, params) -> None:
         self.params = params
         self.epochs_run = 0
@@ -41,11 +41,10 @@ class Trainer:
         self.local_rank = int(os.environ.get("LOCAL_RANK", "0"))
         self.global_rank = int(os.environ.get("RANK", "0"))
 
-        model = model.to(self.local_rank)
-        self.student = model.student.to(self.local_rank)
+        self.student = student_model.to(self.local_rank)
         self.student = DDP(self.student, device_ids=[self.local_rank])
 
-        self.teacher = model.teacher.to(self.local_rank)
+        self.teacher = teacher_model.to(self.local_rank)
         self.teacher.eval()
         for p in self.teacher.parameters():
             p.requires_grad_(False)
@@ -86,49 +85,67 @@ class Trainer:
             global_step = epoch * num_batches + batch_idx
 
             views = batch["views"]
+            B = views[0].shape[0]
+            V = len(views)
 
-
-            # --------- Pack all views into ONE DDP forward ----------
-            global_views = torch.cat(views[:2]).to(self.local_rank, non_blocking=True)  # [2B, C, H, W]
-            local_views = torch.cat(views[2:]).to(self.local_rank, non_blocking=True)
-            x_all = torch.cat([global_views, local_views], dim=0)
+            # ---- pack views ----
+            global_views = torch.cat(views[:2], dim=0).to(self.local_rank, non_blocking=True)  # [2B,C,224,224]
+            local_views = torch.cat(views[2:], dim=0).to(self.local_rank, non_blocking=True) if V > 2 else None
+            x_all = torch.cat([global_views, local_views], dim=0) if local_views is not None else global_views
 
             B_global = global_views.shape[0]  # 2B
+
+            # ---- build iBOT mask (globals only) ----
             seq_len = self.teacher.backbone.sequence_length
+            H, W = self.teacher.backbone.grid_size
+            assert H * W == seq_len - 1
 
-            # Build global mask (for iBOT) and extend to all views (locals get all-false)
-            mask_global = torch.zeros((B_global, seq_len), dtype=torch.bool, device=self.local_rank)
+            # block_mask: [2B,H,W] with variable masked count per image (ok)
+            block_mask = random_block_mask(size=(B_global, H, W), device=self.local_rank)
 
-            H, W = self.teacher.backbone.vit.patch_embed.grid_size
-            assert H * W == seq_len - 1, f"Unexpected grid size {H}x{W}, seq_len {seq_len}"
+            # token mask for backbone: [2B,1+N] (CLS unmasked)
+            mask_global_tokens = torch.zeros((B_global, seq_len), dtype=torch.bool, device=self.local_rank)
+            mask_global_tokens[:, 1:] = block_mask.flatten(1)
 
-            block_mask = random_block_mask(size=(B_global, H, W), device=mask_global.device)  # [2B,H,W]
-            mask_global[:, 1:] = block_mask.flatten(1)
+            # extend to all views: locals have no masking
+            mask_all_tokens = torch.zeros((x_all.shape[0], seq_len), dtype=torch.bool, device=self.local_rank)
+            mask_all_tokens[:B_global] = mask_global_tokens
 
-            mask_all = torch.zeros((x_all.shape[0], seq_len), dtype=torch.bool, device=self.local_rank)
-            mask_all[:B_global] = mask_global  # locals remain all-false
-
-            # --------- Teacher forward (globals only) ----------
+            # ---- teacher forward (globals only, NO mask token replacement) ----
             with torch.no_grad():
-                t_cls, t_feats = self.teacher.forward_backbone(global_views)  # [2B,C], [2B,T,C]
-                t_dino = self.teacher.head.dino_head(t_cls)  # [2B,D]
-                t_ibot = self.teacher.head.ibot_head(t_feats[mask_global])  # [N_masked,D]
+                # teacher uses mask=None (no replacement), but selects same masked positions via block_mask
+                t_dino, t_ibot_masked, _ = self.teacher(global_views, mask=None, ibot_mask_hw=block_mask)
 
-            # --------- Student forward (ONE CALL through DDP wrapper) ----------
-            s_dino_all, s_ibot_masked, s_cls_all = self.student(x_all, mask=mask_all)
-
-            # --------- Losses ----------
-            dino_loss = self.dino_criterion(
-                teacher_out=t_dino.chunk(2),
-                student_out=s_dino_all.chunk(len(views)),
+            # ---- student forward (ONE DDP call) ----
+            # student uses mask_all_tokens for replacement, and uses block_mask only on globals for iBOT selection
+            s_dino_all, s_ibot_masked, s_cls_all = self.student(
+                x_all,
+                mask=mask_all_tokens,
+                ibot_mask_hw=torch.cat(
+                    [block_mask, block_mask.new_zeros((x_all.shape[0] - B_global, H, W), dtype=torch.bool)], dim=0)
             )
 
-            ibot_loss = self.ibot_criterion(teacher_out=t_ibot, student_out=s_ibot_masked, mask=block_mask,)
+            # But simplest: only compute iBOT for globals inside the model by passing globals separately:
+            # (If you keep as above, just ensure ibot_mask_hw matches batch size.)
 
+            # ---- DINO loss ----
+            dino_loss = self.dino_criterion(
+                teacher_out=t_dino.chunk(2),
+                student_out=s_dino_all.chunk(V),
+            )
+
+            # ---- iBOT loss ----
+            ibot_loss = self.ibot_criterion(
+                teacher_out=t_ibot_masked,  # [2B*N_masked, D_out]
+                student_out=s_ibot_masked,  # same
+                mask=block_mask,  # [2B,H,W]
+            )
+
+            # ---- KoLeo loss (student global CLS feats only) ----
             s_cls_global = s_cls_all[:B_global]  # [2B,C]
-            koleo_loss = self.params["optimization"]["koleo_weight"] * sum(self.koleo_criterion(t) for t in s_cls_global.chunk(2))
+            koleo_loss = 0.1 * sum(self.koleo_criterion(t) for t in s_cls_global.chunk(2))
 
-            loss = dino_loss + 0*ibot_loss + 0*koleo_loss
+            loss = dino_loss + 0 * ibot_loss + 0*koleo_loss
 
             # --------- Schedules BEFORE step ----------
             lr = float(self.lr_scheduler[global_step])
@@ -151,14 +168,14 @@ class Trainer:
             # --------- Global-avg meters (DDP mean) ----------
             loss_avg = ddp_mean(loss.detach())
             dino_avg = ddp_mean(dino_loss.detach())
-            ibot_avg = ddp_mean(ibot_loss.detach())
-            koleo_avg = ddp_mean(koleo_loss.detach())
+            # ibot_avg = ddp_mean(ibot_loss.detach())
+            # koleo_avg = ddp_mean(koleo_loss.detach())
 
             total_loss += loss_avg
             self.total_loss_meter.update(loss_avg.item())
             self.dino_loss_meter.update(dino_avg.item())
-            self.ibot_loss_meter.update(ibot_avg.item())
-            self.koleo_loss_meter.update(koleo_avg.item())
+            # self.ibot_loss_meter.update(ibot_avg.item())
+            # self.koleo_loss_meter.update(koleo_avg.item())
 
             # --------- EMA teacher update (backbone + BOTH heads) ----------
             momentum = cosine_schedule(
@@ -168,10 +185,8 @@ class Trainer:
                 end_value=self.params["optimization"]["mom_end"],
             )
             with torch.no_grad():
-                s_mod = self.student.module
-                update_momentum(s_mod.backbone, self.teacher.backbone, m=momentum)
-                update_momentum(s_mod.dino_head, self.teacher.head.dino_head, m=momentum)
-                update_momentum(s_mod.ibot_head, self.teacher.head.ibot_head, m=momentum)
+                for ps, pt in zip(self.student.module.parameters(), self.teacher.parameters()):
+                    pt.data.mul_(momentum).add_(ps.data, alpha=(1.0 - momentum))
 
             # --------- Logging ----------
             if self.global_rank == 0 and global_step % self.params["meta"]["log_every"] == 0:

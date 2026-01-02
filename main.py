@@ -2,11 +2,9 @@ import argparse
 import pprint
 import copy
 import os
-import sys
 import wandb
-import torch
 import torch.distributed as dist
-from models.dinov2 import DINOv2
+from models.vision_transformers import DinoVIT
 from data.data_loader import build_dataloaders
 from src.trainer import Trainer
 from evals.evaluator import Evaluator
@@ -15,6 +13,7 @@ from utils.distributed import ddp_setup, set_seed_custom, is_main_process, get_w
 
 from torch.distributed import destroy_process_group
 from utils.utils import setup_logging, load_yaml
+from utils.visualisation import plot_and_log_crops
 
 
 def main(args):
@@ -53,17 +52,31 @@ def main(args):
         )
         wandb.run.log_code('.')
 
-    model = DINOv2(params['model'], params['data']).to(int(os.environ["LOCAL_RANK"]))
+    student_model = DinoVIT(params['model']['img_size'], params['model']['patch_size'], params['model']['in_channels'],
+                            params['model']['embedding_dim'], params['model']['num_heads'], params['model']['depth'],
+                            params['model']['mlp_dim'], params['model']['dino']['hidden_dim'],
+                            params['model']['dino']['bottleneck_dim'], params['model']['dino']['dropout'],
+                            params['model']['dino']['output_dim'])
+
+    teacher_model = DinoVIT(params['model']['img_size'], params['model']['patch_size'], params['model']['in_channels'],
+                            params['model']['embedding_dim'], params['model']['num_heads'], params['model']['depth'],
+                            params['model']['mlp_dim'], params['model']['dino']['hidden_dim'],
+                            params['model']['dino']['bottleneck_dim'], 0,
+                            params['model']['dino']['output_dim'])
 
     (unsupervised_loader, unsupervised_sampler,
     probe_train_loader, probe_eval_loader, attributes) = build_dataloaders(params['meta']['method_name'], params['data'], eval_params)
 
+    samples = next(iter(unsupervised_loader))['views']
+    fig = plot_and_log_crops(samples, n_samples=10, upsample_locals_to=224)
+    wandb.log({"Training samples": wandb.Image(fig)})
+
     num_gpus = get_world_size()
-    optimizer, lr_scheduler, wd_scheduler = init_optimizers(model, params['optimization'], 
+    optimizer, lr_scheduler, wd_scheduler = init_optimizers(student_model, params['optimization'],
                                                     params['data']['batch_size_per_gpu']*num_gpus,
                                                      unsupervised_loader)
 
-    trainer = Trainer(model, unsupervised_loader, unsupervised_sampler, optimizer, lr_scheduler, wd_scheduler, params)
+    trainer = Trainer(student_model, teacher_model, unsupervised_loader, unsupervised_sampler, optimizer, lr_scheduler, wd_scheduler, params)
 
     for epoch in range(trainer.epochs_run, params['optimization']['epochs']):
         trainer.train(epoch)
@@ -84,9 +97,7 @@ def main(args):
                 wandb.log(eval_metrics)
 
             dist.barrier()
-        
-        if epoch > 11:
-            sys.exit()
+
 
         # if (epoch + 1) % params['meta']['save_every'] == 0:
         #     trainer._save_snapshot(epoch)

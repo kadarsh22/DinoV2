@@ -23,13 +23,14 @@ model:
     bottleneck_dim: 256
     hidden_dim: 256
     output_dim: 512
+    dropout: 0
 
 data:
   dataset: mnist
   # root: /scratch/ak03476/MNIST
 #  root: /leonardo_work/EUHPC_D27_070/data/MNIST
   root: /mnt/fast/nobackup/users/ak03476/data/MNIST/
-  batch_size_per_gpu: 32
+  batch_size_per_gpu: 64
   num_workers: 4
   global_crop_scale: [0.4, 1.0]
   local_crop_scale: [0.05, 0.4]

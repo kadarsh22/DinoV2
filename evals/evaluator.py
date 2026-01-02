@@ -50,7 +50,7 @@ class Evaluator:
             TensorDataset(x_train, a_train),
             batch_size=self.params['probe']['batch_size'], shuffle=True, drop_last=False, pin_memory=True,)
 
-        probe = nn.ModuleDict({a.name: nn.Linear(self.model.vit.embed_dim, a.num_classes) for a in self.attributes}).to(device)
+        probe = nn.ModuleDict({a.name: nn.Linear(self.model.embedding_dim, a.num_classes) for a in self.attributes}).to(device)
 
         opt = torch.optim.Adam(probe.parameters(), lr=self.params['probe']['lr'])
 
@@ -130,7 +130,7 @@ class Evaluator:
         self.model.eval()
         for data, attr in loader:
             data = data.to(device, non_blocking=True)
-            feats = self.model.encode(data)  # [B,T,C] or [B,C]
+            feats = self.model(data)  # [B,T,C] or [B,C]
             x = feats.mean(dim=1) if feats.dim() == 3 else feats
             x_chunks.append(x.cpu())
             a_chunks.append(attr.cpu())

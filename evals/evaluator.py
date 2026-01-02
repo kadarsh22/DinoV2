@@ -1,5 +1,5 @@
 import sys
-from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.nn.functional as F
 import logging
 from typing import Dict, List
 import os
@@ -132,6 +132,7 @@ class Evaluator:
             data = data.to(device, non_blocking=True)
             feats = self.model(data)  # [B,T,C] or [B,C]
             x = feats.mean(dim=1) if feats.dim() == 3 else feats
+            x = F.normalize(x, dim=1)
             x_chunks.append(x.cpu())
             a_chunks.append(attr.cpu())
 

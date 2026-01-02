@@ -2,9 +2,9 @@ tag: dinov2_mnist_pretrain_reproducability_1
 
 meta:
   method_name: dinov2
-  # snapshot_path: /vol/research/project_storage/cache
+  snapshot_path: /vol/research/project_storage/cache
 #  snapshot_path: /leonardo_work/EUHPC_D27_070/cache
-  snapshot_path: /mnt/fast/nobackup/scratch4weeks/ak03476/cache
+#  snapshot_path: /mnt/fast/nobackup/scratch4weeks/ak03476/cache
   eval_every: 5
   log_every: 100
 
@@ -27,9 +27,9 @@ model:
 
 data:
   dataset: mnist
-  # root: /scratch/ak03476/MNIST
+  root: /scratch/ak03476/MNIST
 #  root: /leonardo_work/EUHPC_D27_070/data/MNIST
-  root: /mnt/fast/nobackup/users/ak03476/data/MNIST/
+#  root: /mnt/fast/nobackup/users/ak03476/data/MNIST/
   batch_size_per_gpu: 64
   num_workers: 4
   global_crop_scale: [0.4, 1.0]

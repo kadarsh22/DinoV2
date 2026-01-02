@@ -90,18 +90,18 @@ class Trainer:
 
             # ---- pack views ----
             global_views = torch.cat(views[:2], dim=0).to(self.local_rank, non_blocking=True)  # [2B,C,224,224]
-            local_views = torch.cat(views[2:], dim=0).to(self.local_rank, non_blocking=True) if V > 2 else None
-            x_all = torch.cat([global_views, local_views], dim=0) if local_views is not None else global_views
+            local_views = torch.cat(views[2:], dim=0).to(self.local_rank, non_blocking=True)
+            x_all = torch.cat([global_views, local_views], dim=0)
 
             B_global = global_views.shape[0]  # 2B
-
-            # ---- build iBOT mask (globals only) ----
             seq_len = self.teacher.backbone.sequence_length
+
             H, W = self.teacher.backbone.grid_size
             assert H * W == seq_len - 1
 
             # block_mask: [2B,H,W] with variable masked count per image (ok)
             block_mask = random_block_mask(size=(B_global, H, W), device=self.local_rank)
+
 
             # token mask for backbone: [2B,1+N] (CLS unmasked)
             mask_global_tokens = torch.zeros((B_global, seq_len), dtype=torch.bool, device=self.local_rank)
@@ -168,14 +168,14 @@ class Trainer:
             # --------- Global-avg meters (DDP mean) ----------
             loss_avg = ddp_mean(loss.detach())
             dino_avg = ddp_mean(dino_loss.detach())
-            # ibot_avg = ddp_mean(ibot_loss.detach())
-            # koleo_avg = ddp_mean(koleo_loss.detach())
+            ibot_avg = ddp_mean(ibot_loss.detach())
+            koleo_avg = ddp_mean(koleo_loss.detach())
 
             total_loss += loss_avg
             self.total_loss_meter.update(loss_avg.item())
             self.dino_loss_meter.update(dino_avg.item())
-            # self.ibot_loss_meter.update(ibot_avg.item())
-            # self.koleo_loss_meter.update(koleo_avg.item())
+            self.ibot_loss_meter.update(ibot_avg.item())
+            self.koleo_loss_meter.update(koleo_avg.item())
 
             # --------- EMA teacher update (backbone + BOTH heads) ----------
             momentum = cosine_schedule(

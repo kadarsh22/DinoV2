@@ -4,7 +4,7 @@ import copy
 import os
 import wandb
 import torch.distributed as dist
-from models.vision_transformers import DinoVIT
+from models.vision_transformers import DinoVIT, VisionTransformer, DinoHead
 from data.data_loader import build_dataloaders
 from src.trainer import Trainer
 from evals.evaluator import Evaluator
@@ -52,17 +52,67 @@ def main(args):
         )
         wandb.run.log_code('.')
 
-    student_model = DinoVIT(params['model']['img_size'], params['model']['patch_size'], params['model']['in_channels'],
-                            params['model']['embedding_dim'], params['model']['num_heads'], params['model']['depth'],
-                            params['model']['mlp_dim'], params['model']['dino']['hidden_dim'],
-                            params['model']['dino']['bottleneck_dim'], params['model']['dino']['dropout'],
-                            params['model']['dino']['output_dim'])
+    vit_student = VisionTransformer(
+        img_size=params["model"]["img_size"],
+        patch_size=params["model"]["patch_size"],
+        in_channels=params["model"]["in_channels"],
+        embedding_dim=params["model"]["embedding_dim"],
+        mlp_dim=params["model"]["mlp_dim"],
+        num_heads=params["model"]["num_heads"],
+        dropout=params["model"]['dino']["dropout"],
+        depth=params["model"]["depth"],
+        avg="cls",
+    )
 
-    teacher_model = DinoVIT(params['model']['img_size'], params['model']['patch_size'], params['model']['in_channels'],
-                            params['model']['embedding_dim'], params['model']['num_heads'], params['model']['depth'],
-                            params['model']['mlp_dim'], params['model']['dino']['hidden_dim'],
-                            params['model']['dino']['bottleneck_dim'], 0,
-                            params['model']['dino']['output_dim'])
+    vit_teacher = VisionTransformer(
+        img_size=params["model"]["img_size"],
+        patch_size=params["model"]["patch_size"],
+        in_channels=params["model"]["in_channels"],
+        embedding_dim=params["model"]["embedding_dim"],
+        mlp_dim=params["model"]["mlp_dim"],
+        num_heads=params["model"]["num_heads"],
+        dropout=0,
+        depth=params["model"]["depth"],
+        avg="cls",
+    )
+
+    # ---- heads (DINO + iBOT) ----
+    dino_head_student = DinoHead(
+        embedding_dim=params["model"]["embedding_dim"],
+        hidden_dim=params["model"]["dino"]["hidden_dim"],
+        bottleneck_dim=params["model"]["dino"]["bottleneck_dim"],
+        out_dim=params["model"]["dino"]["output_dim"],
+        norm_last_layer=params["model"]["dino"].get("norm_last_layer", False),
+    )
+
+    ibot_head_student = DinoHead(
+        embedding_dim=params["model"]["embedding_dim"],
+        hidden_dim=params["model"]["dino"]["hidden_dim"],
+        bottleneck_dim=params["model"]["dino"]["bottleneck_dim"],
+        out_dim=params["model"]["dino"]["output_dim"],
+        norm_last_layer=params["model"]["dino"].get("norm_last_layer", False),
+    )
+
+    dino_head_teacher = DinoHead(
+        embedding_dim=params["model"]["embedding_dim"],
+        hidden_dim=params["model"]["dino"]["hidden_dim"],
+        bottleneck_dim=params["model"]["dino"]["bottleneck_dim"],
+        out_dim=params["model"]["dino"]["output_dim"],
+        norm_last_layer=params["model"]["dino"].get("norm_last_layer", False),
+    )
+
+    ibot_head_teacher = DinoHead(
+        embedding_dim=params["model"]["embedding_dim"],
+        hidden_dim=params["model"]["dino"]["hidden_dim"],
+        bottleneck_dim=params["model"]["dino"]["bottleneck_dim"],
+        out_dim=params["model"]["dino"]["output_dim"],
+        norm_last_layer=params["model"]["dino"].get("norm_last_layer", False),
+    )
+
+    student_model = DinoVIT(vit_student, dino_head_student, ibot_head_student)
+    teacher_model = DinoVIT(vit_teacher, dino_head_teacher, ibot_head_teacher)
+    for p in teacher_model.parameters():
+        p.requires_grad = False
 
     (unsupervised_loader, unsupervised_sampler,
     probe_train_loader, probe_eval_loader, attributes) = build_dataloaders(params['meta']['method_name'], params['data'], eval_params)
@@ -121,7 +171,7 @@ if __name__ == '__main__':
     parser.add_argument('--local_crop_scale', type=float, nargs=2, metavar=('MIN', 'MAX'),
                         help='min/max scale for local crops', default=[0.05, 0.4])
 
-    parser.add_argument('--lr', type=float, help='learning rate', default=0.001)
+    parser.add_argument('--lr', type=float, help='learning rate', default=0.0005)
     parser.add_argument('--warmup_epochs', type=int, help='number of warmup epochs for learning rate schedule', default=10)
 
 

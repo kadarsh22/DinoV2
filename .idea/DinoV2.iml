@@ -2,7 +2,7 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$" />
-    <orderEntry type="jdk" jdkName="dinov2" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="/vol/research/project_storage/miniconda3/envs/lighlyssl_env" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

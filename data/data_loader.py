@@ -2,6 +2,7 @@ from typing import Any, Dict, Tuple
 import torch
 import torchvision
 from torch.utils.data import Dataset, DataLoader
+from functools import partial
 from torchvision.transforms import (
     Compose, Resize, CenterCrop, ToTensor, Normalize, Lambda
 )
@@ -10,7 +11,10 @@ from torch.utils.data import random_split
 from data.attributes import AttributeSpec
 from lightly.data.collate import IJEPAMaskCollator
 from lightly.transforms.ijepa_transform import IJEPATransform
-from lightly.transforms.dino_transform import DINOTransform
+from data.loaders import make_data_loader, SamplerType
+from data.augmentations import DataAugmentationDINO
+from data.masking import MaskingGenerator
+from data.collate import collate_data_and_cast
 from utils.attribute_dataset import AttributeDataset
 
 
@@ -93,23 +97,45 @@ def build_dataloaders(method_name: str, data_config, eval_params):
     world_size = dist.get_world_size()
 
     if method_name == "dinov2":
-        dino_tf = DINOTransform(
-            global_crop_size=data_config['global_crops_size'],
-            local_crop_size=data_config['local_crops_size'],
-            global_crop_scale=data_config['global_crop_scale'],
-            local_crop_scale=data_config['local_crop_scale'],
-            n_local_views=data_config['n_local_views'],
-            normalize={"mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5]}
+        img_size = cfg.crops.global_crops_size
+        patch_size = cfg.student.patch_size
+        n_tokens = (img_size // patch_size) ** 2
+        mask_generator = MaskingGenerator(
+            input_size=(img_size // patch_size, img_size // patch_size),
+            max_num_patches=0.5 * img_size // patch_size * img_size // patch_size,
         )
 
-        def train_transform(img):
-            return dino_tf(img)
+        data_transform = DataAugmentationDINO(
+            cfg.crops.global_crops_scale,
+            cfg.crops.local_crops_scale,
+            cfg.crops.local_crops_number,
+            global_crops_size=cfg.crops.global_crops_size,
+            local_crops_size=cfg.crops.local_crops_size,
+        )
 
-        train_ds = DictDataset(train_dataset, x_key="views", y_key="label", transform=train_transform)
-        train_sampler = torch.utils.data.distributed.DistributedSampler(dataset=train_ds, num_replicas=world_size, shuffle=True, drop_last=True, rank=rank)
+        collate_fn = partial(
+            collate_data_and_cast,
+            mask_ratio_tuple=cfg.ibot.mask_ratio_min_max,
+            mask_probability=cfg.ibot.mask_sample_probability,
+            n_tokens=n_tokens,
+            mask_generator=mask_generator,
+            dtype=inputs_dtype,
+        )
 
-        train_loader = DataLoader(train_ds, batch_size=data_config['batch_size_per_gpu'], drop_last=True, sampler=train_sampler,
-                                  num_workers=data_config['num_workers'], pin_memory=True, )
+        train_ds = DictDataset(train_dataset, x_key="views", y_key="label", transform=data_transform)
+        sampler_type = SamplerType.DISTRIBUTED
+        train_loader, train_sampler = make_data_loader(
+            dataset=train_ds,
+            batch_size=cfg.train.batch_size_per_gpu,
+            num_workers=cfg.train.num_workers,
+            shuffle=True,
+            seed=start_iter,  # TODO: Fix this -- cfg.train.seed
+            sampler_type=sampler_type,
+            sampler_advance=0,  # TODO(qas): fix this -- start_iter * cfg.train.batch_size_per_gpu,
+            drop_last=True,
+            collate_fn=collate_fn,
+        )
+
 
     elif method_name == "ijepa":
         train_transform = IJEPATransform(normalize={'mean': [0.5, 0.5, 0.5], 'std': [0.5, 0.5, 0.5]})

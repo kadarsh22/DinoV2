@@ -4,11 +4,10 @@ import copy
 import os
 import wandb
 import torch.distributed as dist
-from models.vision_transformers import DinoVIT, VisionTransformer, DinoHead
 from data.data_loader import build_dataloaders
 from src.trainer import Trainer
 from evals.evaluator import Evaluator
-from helper import init_optimizers
+from src.ssl_meta_arch import SSLMetaArch
 from utils.distributed import ddp_setup, set_seed_custom, is_main_process, get_world_size
 
 from torch.distributed import destroy_process_group
@@ -52,67 +51,6 @@ def main(args):
         )
         wandb.run.log_code('.')
 
-    vit_student = VisionTransformer(
-        img_size=params["model"]["img_size"],
-        patch_size=params["model"]["patch_size"],
-        in_channels=params["model"]["in_channels"],
-        embedding_dim=params["model"]["embedding_dim"],
-        mlp_dim=params["model"]["mlp_dim"],
-        num_heads=params["model"]["num_heads"],
-        dropout=params["model"]['dino']["dropout"],
-        depth=params["model"]["depth"],
-        avg="cls",
-    )
-
-    vit_teacher = VisionTransformer(
-        img_size=params["model"]["img_size"],
-        patch_size=params["model"]["patch_size"],
-        in_channels=params["model"]["in_channels"],
-        embedding_dim=params["model"]["embedding_dim"],
-        mlp_dim=params["model"]["mlp_dim"],
-        num_heads=params["model"]["num_heads"],
-        dropout=0,
-        depth=params["model"]["depth"],
-        avg="cls",
-    )
-
-    # ---- heads (DINO + iBOT) ----
-    dino_head_student = DinoHead(
-        embedding_dim=params["model"]["embedding_dim"],
-        hidden_dim=params["model"]["dino"]["hidden_dim"],
-        bottleneck_dim=params["model"]["dino"]["bottleneck_dim"],
-        out_dim=params["model"]["dino"]["output_dim"],
-        norm_last_layer=params["model"]["dino"].get("norm_last_layer", False),
-    )
-
-    ibot_head_student = DinoHead(
-        embedding_dim=params["model"]["embedding_dim"],
-        hidden_dim=params["model"]["dino"]["hidden_dim"],
-        bottleneck_dim=params["model"]["dino"]["bottleneck_dim"],
-        out_dim=params["model"]["dino"]["output_dim"],
-        norm_last_layer=params["model"]["dino"].get("norm_last_layer", False),
-    )
-
-    dino_head_teacher = DinoHead(
-        embedding_dim=params["model"]["embedding_dim"],
-        hidden_dim=params["model"]["dino"]["hidden_dim"],
-        bottleneck_dim=params["model"]["dino"]["bottleneck_dim"],
-        out_dim=params["model"]["dino"]["output_dim"],
-        norm_last_layer=params["model"]["dino"].get("norm_last_layer", False),
-    )
-
-    ibot_head_teacher = DinoHead(
-        embedding_dim=params["model"]["embedding_dim"],
-        hidden_dim=params["model"]["dino"]["hidden_dim"],
-        bottleneck_dim=params["model"]["dino"]["bottleneck_dim"],
-        out_dim=params["model"]["dino"]["output_dim"],
-        norm_last_layer=params["model"]["dino"].get("norm_last_layer", False),
-    )
-
-    student_model = DinoVIT(vit_student, dino_head_student, ibot_head_student)
-    teacher_model = DinoVIT(vit_teacher, dino_head_teacher, ibot_head_teacher)
-    for p in teacher_model.parameters():
-        p.requires_grad = False
 
     (unsupervised_loader, unsupervised_sampler,
     probe_train_loader, probe_eval_loader, attributes) = build_dataloaders(params['meta']['method_name'], params['data'], eval_params)
@@ -121,12 +59,14 @@ def main(args):
     fig = plot_and_log_crops(samples, n_samples=10, upsample_locals_to=224)
     wandb.log({"Training samples": wandb.Image(fig)})
 
-    num_gpus = get_world_size()
-    optimizer, lr_scheduler, wd_scheduler = init_optimizers(student_model, params['optimization'],
-                                                    params['data']['batch_size_per_gpu']*num_gpus,
-                                                     unsupervised_loader)
+    model = SSLMetaArch(cfg).to(torch.device("cuda"))
+    model.prepare_for_distributed_training()
 
-    trainer = Trainer(student_model, teacher_model, unsupervised_loader, unsupervised_sampler, optimizer, lr_scheduler, wd_scheduler, params)
+    optimizer, = build_optimizer(model)
+    lr_schedule, wd_schedule, momentum_schedule,teacher_temp_schedule,last_layer_lr_schedule = build_schedulers()
+
+    trainer = Trainer(model, unsupervised_loader, unsupervised_sampler, optimizer,
+                      lr_schedule, wd_schedule, momentum_schedule,teacher_temp_schedule,last_layer_lr_schedule, params)
 
     for epoch in range(trainer.epochs_run, params['optimization']['epochs']):
         trainer.train(epoch)

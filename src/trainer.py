@@ -64,129 +64,69 @@ class Trainer:
         self.koleo_criterion = KoLeoLoss().to(self.local_rank)
 
     def train(self, epoch: int):
+        for data in metric_logger.log_every(
+                data_loader,
+                10,
+                header,
+                max_iter,
+                start_iter,
+        ):
+            current_batch_size = data["collated_global_crops"].shape[0] / 2
+            if iteration > max_iter:
+                return
 
-        num_batches = len(self.unsupervised_loader)
-        total_steps = self.params["optimization"]["epochs"] * num_batches
+            # apply schedules
 
-        total_loss = torch.zeros((), device=self.local_rank)
+            lr = lr_schedule[iteration]
+            wd = wd_schedule[iteration]
+            mom = momentum_schedule[iteration]
+            teacher_temp = teacher_temp_schedule[iteration]
+            last_layer_lr = last_layer_lr_schedule[iteration]
+            apply_optim_scheduler(optimizer, lr, wd, last_layer_lr)
 
-        self.total_loss_meter.reset()
-        self.dino_loss_meter.reset()
-        self.ibot_loss_meter.reset()
-        self.koleo_loss_meter.reset()
+            # compute losses
 
-        if self.unsupervised_sampler is not None:
-            self.unsupervised_sampler.set_epoch(epoch)
+            optimizer.zero_grad(set_to_none=True)
+            loss_dict = model.forward_backward(data, teacher_temp=teacher_temp)
 
-        self.student.train()
-        self.teacher.eval()
+            # clip gradients
 
-        for batch_idx, batch in enumerate(self.unsupervised_loader):
-            global_step = epoch * num_batches + batch_idx
+            if fp16_scaler is not None:
+                if cfg.optim.clip_grad:
+                    fp16_scaler.unscale_(optimizer)
+                    for v in model.student.values():
+                        v.clip_grad_norm_(cfg.optim.clip_grad)
+                fp16_scaler.step(optimizer)
+                fp16_scaler.update()
+            else:
+                if cfg.optim.clip_grad:
+                    for v in model.student.values():
+                        v.clip_grad_norm_(cfg.optim.clip_grad)
+                optimizer.step()
 
-            views = batch["views"]
-            B = views[0].shape[0]
-            V = len(views)
+            # perform teacher EMA update
 
-            # ---- pack views ----
-            global_views = torch.cat(views[:2], dim=0).to(self.local_rank, non_blocking=True)  # [2B,C,224,224]
-            local_views = torch.cat(views[2:], dim=0).to(self.local_rank, non_blocking=True)
-            x_all = torch.cat([global_views, local_views], dim=0)
+            model.update_teacher(mom)
 
-            B_global = global_views.shape[0]  # 2B
-            seq_len = self.teacher.backbone.sequence_length
+            # logging
 
-            H, W = self.teacher.backbone.grid_size
-            assert H * W == seq_len - 1
+            if distributed.get_global_size() > 1:
+                for v in loss_dict.values():
+                    torch.distributed.all_reduce(v)
+            loss_dict_reduced = {k: v.item() / distributed.get_global_size() for k, v in loss_dict.items()}
 
-            # block_mask: [2B,H,W] with variable masked count per image (ok)
-            block_mask = random_block_mask(size=(B_global, H, W), device=self.local_rank)
+            if math.isnan(sum(loss_dict_reduced.values())):
+                logger.info("NaN detected")
+                raise AssertionError
+            losses_reduced = sum(loss for loss in loss_dict_reduced.values())
 
+            metric_logger.update(lr=lr)
+            metric_logger.update(wd=wd)
+            metric_logger.update(mom=mom)
+            metric_logger.update(last_layer_lr=last_layer_lr)
+            metric_logger.update(current_batch_size=current_batch_size)
+            metric_logger.update(total_loss=losses_reduced, **loss_dict_reduced)
 
-            # token mask for backbone: [2B,1+N] (CLS unmasked)
-            mask_global_tokens = torch.zeros((B_global, seq_len), dtype=torch.bool, device=self.local_rank)
-            mask_global_tokens[:, 1:] = block_mask.flatten(1)
-
-            # extend to all views: locals have no masking
-            mask_all_tokens = torch.zeros((x_all.shape[0], seq_len), dtype=torch.bool, device=self.local_rank)
-            mask_all_tokens[:B_global] = mask_global_tokens
-
-            # ---- teacher forward (globals only, NO mask token replacement) ----
-            with torch.no_grad():
-                # teacher uses mask=None (no replacement), but selects same masked positions via block_mask
-                t_dino, t_ibot_masked, _ = self.teacher(global_views, mask=None, ibot_mask_hw=block_mask)
-
-            # ---- student forward (ONE DDP call) ----
-            # student uses mask_all_tokens for replacement, and uses block_mask only on globals for iBOT selection
-            s_dino_all, s_ibot_masked, s_cls_all = self.student(
-                x_all,
-                mask=mask_all_tokens,
-                ibot_mask_hw=torch.cat(
-                    [block_mask, block_mask.new_zeros((x_all.shape[0] - B_global, H, W), dtype=torch.bool)], dim=0)
-            )
-
-            # But simplest: only compute iBOT for globals inside the model by passing globals separately:
-            # (If you keep as above, just ensure ibot_mask_hw matches batch size.)
-
-            # ---- DINO loss ----
-            dino_loss = self.dino_criterion(
-                teacher_out=t_dino.chunk(2),
-                student_out=s_dino_all.chunk(V),
-            )
-
-            # ---- iBOT loss ----
-            ibot_loss = self.ibot_criterion(
-                teacher_out=t_ibot_masked,  # [2B*N_masked, D_out]
-                student_out=s_ibot_masked,  # same
-                mask=block_mask,  # [2B,H,W]
-            )
-
-            # ---- KoLeo loss (student global CLS feats only) ----
-            s_cls_global = s_cls_all[:B_global]  # [2B,C]
-            koleo_loss = 0.1 * sum(self.koleo_criterion(t) for t in s_cls_global.chunk(2))
-
-            loss = dino_loss + 0 * ibot_loss + 0*koleo_loss
-
-            # --------- Schedules BEFORE step ----------
-            lr = float(self.lr_scheduler[global_step])
-            wd = float(self.wd_scheduler[global_step])
-            for pg in self.optimizer.param_groups:
-                pg["lr"] = lr
-                if pg.get("weight_decay", 0.0) != 0.0:
-                    pg["weight_decay"] = wd
-
-            # Optional last layer freeze (if you use that param_group convention)
-            if epoch < 1:
-                for pg in self.optimizer.param_groups:
-                    if "last_layer" in pg:
-                        pg["lr"] = 0.0
-
-            self.optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            self.optimizer.step()
-
-            # --------- Global-avg meters (DDP mean) ----------
-            loss_avg = ddp_mean(loss.detach())
-            dino_avg = ddp_mean(dino_loss.detach())
-            ibot_avg = ddp_mean(ibot_loss.detach())
-            koleo_avg = ddp_mean(koleo_loss.detach())
-
-            total_loss += loss_avg
-            self.total_loss_meter.update(loss_avg.item())
-            self.dino_loss_meter.update(dino_avg.item())
-            self.ibot_loss_meter.update(ibot_avg.item())
-            self.koleo_loss_meter.update(koleo_avg.item())
-
-            # --------- EMA teacher update (backbone + BOTH heads) ----------
-            momentum = cosine_schedule(
-                step=global_step,
-                max_steps=total_steps,
-                start_value=self.params["optimization"]["mom_start"],
-                end_value=self.params["optimization"]["mom_end"],
-            )
-            with torch.no_grad():
-                for ps, pt in zip(self.student.module.parameters(), self.teacher.parameters()):
-                    pt.data.mul_(momentum).add_(ps.data, alpha=(1.0 - momentum))
 
             # --------- Logging ----------
             if self.global_rank == 0 and global_step % self.params["meta"]["log_every"] == 0:

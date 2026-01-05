@@ -4,7 +4,7 @@
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/wandb" />
     </content>
-    <orderEntry type="jdk" jdkName="/vol/research/project_storage/miniconda3/envs/dinov2_working" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="dinov2" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

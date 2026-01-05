@@ -1,0 +1,40 @@
+dino:
+  head_n_prototypes: 512
+  head_bottleneck_dim: 128
+  head_hidden_dim: 512
+  head_nlayers: 3
+  # smaller head is enough
+ibot:
+  separate_head: true
+  head_bottleneck_dim: 128
+  head_hidden_dim: 512                # smaller head is enough
+  head_n_prototypes: 512
+  head_nlayers: 3
+train:
+  batch_size_per_gpu: 128
+  dataset_path: ImageNet22k
+  centering: sinkhorn_knopp
+student:
+  arch: vit_small
+  patch_size: 14
+  drop_path_rate: 0.1
+  ffn_layer: swiglufused
+  block_chunks: 0
+teacher:
+  momentum_teacher: 0.996
+  final_momentum_teacher: 1.0
+  warmup_teacher_temp: 0.04
+  teacher_temp: 0.07
+  warmup_teacher_temp_epochs: 10       # shorter warmup for small dataset
+optim:
+  epochs: 100
+  weight_decay: 0.04
+  weight_decay_end: 0.2
+  base_lr: 2.0e-04  # learning rate for a batch size of 1024
+  warmup_epochs: 10
+  layerwise_decay: 1.0
+crops:
+  local_crops_size: 98
+  local_crops_scale:
+    - 0.3
+    - 0.6

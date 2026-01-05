@@ -13,6 +13,7 @@ from utils.distributed import ddp_setup, set_seed_custom, is_main_process
 from utils.utils import load_yaml
 from utils.config import setup
 from utils.visualisation import plot_crops_from_dataset
+from torchinfo import summary
 
 
 def main(args):
@@ -22,6 +23,7 @@ def main(args):
 
     train_params = setup(args)
     train_params.train.dataset_path = args.dataset_path
+    train_params.train.OFFICIAL_EPOCH_LENGTH = 50
     eval_params = load_yaml(args.eval_fname)
     combined_config = {"train": train_params, "eval": eval_params,}
 
@@ -47,6 +49,11 @@ def main(args):
         wandb.log({"Training samples": wandb.Image(fig)})
 
     model = SSLMetaArch(train_params).to(torch.device("cuda"))
+    if is_main_process():
+        summary(model.teacher.backbone, input_size=(1, 3, 224, 224), device="cuda")
+        summary(model.teacher.dino_head, input_size=(1, model.embed_dim), device="cuda")
+        summary(model.teacher.ibot_head, input_size=(1, model.embed_dim), device="cuda")
+
     model.prepare_for_distributed_training()
 
     optimizer = build_optimizer(train_params, model.get_params_groups())
@@ -64,39 +71,102 @@ def main(args):
     if is_main_process():
         wandb.finish()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("opts",
-                        help=""" Modify config options at the end of the command. 
-                        For Yacs configs, use space-separated "PATH.KEY VALUE" pairs.
-                        For python-based LazyConfig, use "path.key=value". """.strip(),
-                        default=None, nargs=argparse.REMAINDER,)
+    # ---------------------------
+    # Config overrides
+    # ---------------------------
+    parser.add_argument(
+        "opts",
+        nargs=argparse.REMAINDER,
+        default=None,
+        help=(
+            "Modify config options at the end of the command.\n"
+            '  • Yacs configs:   "PATH.KEY VALUE" pairs (space-separated)\n'
+            '  • LazyConfig:     "path.key=value"\n'
+        ),
+    )
 
-    parser.add_argument("--config-file", default="configs/train/vits16.yaml", metavar="FILE", help="path to config file")
-    parser.add_argument('--run_name', type=str, help='wandb run name', default='test')
-    parser.add_argument('--output_dir', type=str, help='name of config file to load',
-                        default='/mnt/fast/nobackup/scratch4weeks/ak03476/dino_outputs')
-    parser.add_argument('--dataset', type=str, help='wandb run name', default='cmnist')
-    parser.add_argument('--dataset_path', type=str, help='path to the dataset',
-                        default='/mnt/fast/nobackup/users/ak03476/data/verfied_cmnist/uncorrelated/ColoredMNIST-Skewed0.9-Severity1')
+    parser.add_argument(
+        "--config-file",
+        default="configs/train/cmnist/vits16.yaml",
+        metavar="FILE",
+        help="Path to training config file",
+    )
+    parser.add_argument(
+        "--eval_fname",
+        type=str,
+        default="configs/eval/cmnist/eval_dinov2.yaml",
+        help="Path to evaluation config file",
+    )
 
+    # ---------------------------
+    # Run / logging
+    # ---------------------------
+    parser.add_argument("--run_name", type=str, default="test", help="W&B run name")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="/mnt/fast/nobackup/scratch4weeks/ak03476/dino_outputs",
+        help="Output directory for logs/checkpoints",
+    )
+    parser.add_argument("--seed", type=int, default=123, help="Random seed")
 
-    parser.add_argument('--eval_fname', type=str, help='name of config file to load', default='configs/dinov2/mnist/eval_dinov2.yaml')
-    parser.add_argument('--seed', type=int, help='random seed', default=123)
+    # ---------------------------
+    # Dataset
+    # ---------------------------
+    parser.add_argument("--dataset", type=str, default="cmnist", help="Dataset name")
+    parser.add_argument(
+        "--dataset_path",
+        type=str,
+        default="/mnt/fast/nobackup/users/ak03476/data/verfied_cmnist/uncorrelated/ColoredMNIST-Skewed0.9-Severity1",
+        help="Path to the dataset root",
+    )
 
-    parser.add_argument('--temp_start', type=float, help='starting temperature', default=0.9)
-    parser.add_argument('--temp_end', type=float, help='ending temperature', default=0.01)
-    parser.add_argument('--temp_warmup_epochs', type=int, help='number of warmup epochs for temperature schedule', default=1)
+    # ---------------------------
+    # Temperature schedule
+    # ---------------------------
+    parser.add_argument("--temp_start", type=float, default=0.9, help="Starting temperature")
+    parser.add_argument("--temp_end", type=float, default=0.01, help="Ending temperature")
+    parser.add_argument(
+        "--temp_warmup_epochs",
+        type=int,
+        default=1,
+        help="Warmup epochs for temperature schedule",
+    )
 
-    parser.add_argument('--global_crop_scale', type=float, nargs=2, metavar=('MIN', 'MAX'),
-                        help='min/max scale for global crops', default=[0.4, 1.0])
-    parser.add_argument('--local_crop_scale', type=float, nargs=2, metavar=('MIN', 'MAX'),
-                        help='min/max scale for local crops', default=[0.05, 0.4])
+    # ---------------------------
+    # Crops
+    # ---------------------------
+    parser.add_argument(
+        "--global_crop_scale",
+        type=float,
+        nargs=2,
+        metavar=("MIN", "MAX"),
+        default=[0.4, 1.0],
+        help="Min/max scale for global crops",
+    )
+    parser.add_argument(
+        "--local_crop_scale",
+        type=float,
+        nargs=2,
+        metavar=("MIN", "MAX"),
+        default=[0.05, 0.4],
+        help="Min/max scale for local crops",
+    )
 
-    parser.add_argument('--lr', type=float, help='learning rate', default=0.0005)
-    parser.add_argument('--warmup_epochs', type=int, help='number of warmup epochs for learning rate schedule', default=10)
-
+    # ---------------------------
+    # Optim
+    # ---------------------------
+    parser.add_argument("--lr", type=float, default=0.0005, help="Learning rate")
+    parser.add_argument(
+        "--warmup_epochs",
+        type=int,
+        default=10,
+        help="Warmup epochs for LR schedule",
+    )
 
     arguments = parser.parse_args()
     main(arguments)
+

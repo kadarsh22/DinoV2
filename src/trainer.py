@@ -5,11 +5,9 @@ import torch.distributed as dist
 import dinov2.distributed as distributed
 import wandb
 import math
-import copy
 from dinov2.logging import MetricLogger
 from utils.distributed import is_main_process
-from src.utils.logging import AverageMeter, ddp_mean
-from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from src.utils.logging import AverageMeter
 from evals.evaluator import Evaluator
 
 

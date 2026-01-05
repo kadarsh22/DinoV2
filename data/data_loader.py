@@ -15,31 +15,6 @@ from data.collate import collate_data_and_cast
 from utils.attribute_dataset import AttributeDataset
 
 
-
-class DictDataset(Dataset):
-    def __init__(self, base: Dataset, x_key: str, y_key: str, transform=None, target_transform=None):
-        self.base = base
-        self.x_key = x_key
-        self.y_key = y_key
-        self.transform = transform
-        self.target_transform = target_transform
-
-    def __len__(self) -> int:
-        return len(self.base)
-
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
-        x, y = self.base[idx]
-        if self.transform is not None:
-            x = self.transform(x)
-        if self.target_transform is not None:
-            y = self.target_transform(y)
-        return {self.x_key: x, self.y_key: y}
-
-
-def _imagenet_norm():
-    return Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
-
-
 def _infer_dataset(dataset, cfg: Dict[str, Any]) -> Tuple[Dataset, Dataset, int, Any]:
     """
     Returns (train_dataset, val_dataset, num_classes, attributes)

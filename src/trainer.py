@@ -2,13 +2,14 @@ from __future__ import annotations
 import os
 import torch
 import torch.distributed as dist
+import dinov2.distributed as distributed
 import wandb
-from torch.nn.parallel import DistributedDataParallel as DDP
+import math
+import copy
+from dinov2.logging import MetricLogger
 
 from src.utils.logging import AverageMeter, ddp_mean
-from lightly.loss import DINOLoss, IBOTPatchLoss, KoLeoLoss
-from lightly.models.utils import random_block_mask, update_momentum
-from lightly.utils.scheduler import cosine_schedule
+from evals.evaluator import Evaluator
 
 
 @torch.no_grad()
@@ -21,10 +22,15 @@ def checksum(module):
 
 
 class Trainer:
-    def __init__(self, student_model, teacher_model, unsupervised_loader, unsupervised_sampler,
-                 optimizer, lr_scheduler, wd_scheduler, params) -> None:
-        self.params = params
+    def __init__(self, model, unsupervised_loader, unsupervised_sampler, optimizer,
+                      lr_scheduler, wd_scheduler, momentum_schedule,teacher_temp_schedule,last_layer_lr_schedule,
+                        fp16_scaler,
+                        probe_train_loader, probe_eval_loader, attributes, train_params, eval_params) -> None:
+        self.train_params = train_params
+        self.eval_params = eval_params
         self.epochs_run = 0
+        self.model = model
+        self.fp16_scaler = fp16_scaler
 
         self.unsupervised_loader = unsupervised_loader
         self.unsupervised_sampler = unsupervised_sampler
@@ -32,6 +38,13 @@ class Trainer:
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
         self.wd_scheduler = wd_scheduler
+        self.momentum_schedule = momentum_schedule
+        self.teacher_temp_schedule = teacher_temp_schedule
+        self.last_layer_lr_schedule = last_layer_lr_schedule
+
+        self.probe_train_loader = probe_train_loader
+        self.probe_eval_loader = probe_eval_loader
+        self.attributes = attributes
 
         self.total_loss_meter = AverageMeter()
         self.dino_loss_meter = AverageMeter()
@@ -41,72 +54,51 @@ class Trainer:
         self.local_rank = int(os.environ.get("LOCAL_RANK", "0"))
         self.global_rank = int(os.environ.get("RANK", "0"))
 
-        self.student = student_model.to(self.local_rank)
-        self.student = DDP(self.student, device_ids=[self.local_rank])
+        metrics_file = os.path.join(train_params.train.output_dir, "training_metrics.json")
+        self.metric_logger = MetricLogger(delimiter="  ", output_file=metrics_file)
+        self.start_iter = 0
+        self.iteration = self.start_iter
 
-        self.teacher = teacher_model.to(self.local_rank)
-        self.teacher.eval()
-        for p in self.teacher.parameters():
-            p.requires_grad_(False)
 
-        self.dino_criterion = DINOLoss(
-            output_dim=self.params["model"]["dino"]["output_dim"],
-            warmup_teacher_temp=self.params["optimization"]["temp_start"],
-            teacher_temp=self.params["optimization"]["temp_end"],
-            warmup_teacher_temp_epochs=self.params["optimization"]["temp_warmup_epochs"],
-        ).to(self.local_rank)
-
-        self.ibot_criterion = IBOTPatchLoss(
-            output_dim=self.params["model"]["dino"]["output_dim"],
-            teacher_temp=self.params["optimization"]["temp_end"],
-        ).to(self.local_rank)
-
-        self.koleo_criterion = KoLeoLoss().to(self.local_rank)
-
-    def train(self, epoch: int):
-        for data in metric_logger.log_every(
-                data_loader,
-                10,
-                header,
-                max_iter,
-                start_iter,
-        ):
+    def train(self, max_iter: int):
+        header = "Training"
+        for data in self.metric_logger.log_every( self.unsupervised_loader, 10, header, max_iter, self.start_iter,):
             current_batch_size = data["collated_global_crops"].shape[0] / 2
-            if iteration > max_iter:
+            if self.iteration > max_iter:
                 return
 
             # apply schedules
 
-            lr = lr_schedule[iteration]
-            wd = wd_schedule[iteration]
-            mom = momentum_schedule[iteration]
-            teacher_temp = teacher_temp_schedule[iteration]
-            last_layer_lr = last_layer_lr_schedule[iteration]
-            apply_optim_scheduler(optimizer, lr, wd, last_layer_lr)
+            lr = self.lr_scheduler[self.iteration]
+            wd = self.wd_scheduler[self.iteration]
+            mom = self.momentum_schedule[self.iteration]
+            teacher_temp = self.teacher_temp_schedule[self.iteration]
+            last_layer_lr = self.last_layer_lr_schedule[self.iteration]
+            self.apply_optim_scheduler(lr, wd, last_layer_lr)
 
             # compute losses
 
-            optimizer.zero_grad(set_to_none=True)
-            loss_dict = model.forward_backward(data, teacher_temp=teacher_temp)
+            self.optimizer.zero_grad(set_to_none=True)
+            loss_dict = self.model.forward_backward(data, teacher_temp=teacher_temp)
 
             # clip gradients
 
-            if fp16_scaler is not None:
-                if cfg.optim.clip_grad:
-                    fp16_scaler.unscale_(optimizer)
-                    for v in model.student.values():
-                        v.clip_grad_norm_(cfg.optim.clip_grad)
-                fp16_scaler.step(optimizer)
-                fp16_scaler.update()
+            if self.fp16_scaler is not None:
+                if self.train_params.optim.clip_grad:
+                    self.fp16_scaler.unscale_(self.optimizer)
+                    for v in self.model.student.values():
+                        v.clip_grad_norm_(self.train_params.optim.clip_grad)
+                self.fp16_scaler.step(self.optimizer)
+                self.fp16_scaler.update()
             else:
-                if cfg.optim.clip_grad:
-                    for v in model.student.values():
-                        v.clip_grad_norm_(cfg.optim.clip_grad)
-                optimizer.step()
+                if self.train_params.optim.clip_grad:
+                    for v in self.model.student.values():
+                        v.clip_grad_norm_(self.train_params.optim.clip_grad)
+                self.optimizer.step()
 
             # perform teacher EMA update
 
-            model.update_teacher(mom)
+            self.model.update_teacher(mom)
 
             # logging
 
@@ -116,20 +108,20 @@ class Trainer:
             loss_dict_reduced = {k: v.item() / distributed.get_global_size() for k, v in loss_dict.items()}
 
             if math.isnan(sum(loss_dict_reduced.values())):
-                logger.info("NaN detected")
+                print("NaN detected")
                 raise AssertionError
             losses_reduced = sum(loss for loss in loss_dict_reduced.values())
 
-            metric_logger.update(lr=lr)
-            metric_logger.update(wd=wd)
-            metric_logger.update(mom=mom)
-            metric_logger.update(last_layer_lr=last_layer_lr)
-            metric_logger.update(current_batch_size=current_batch_size)
-            metric_logger.update(total_loss=losses_reduced, **loss_dict_reduced)
+            self.metric_logger.update(lr=lr)
+            self.metric_logger.update(wd=wd)
+            self.metric_logger.update(mom=mom)
+            self.metric_logger.update(last_layer_lr=last_layer_lr)
+            self.metric_logger.update(current_batch_size=current_batch_size)
+            self.metric_logger.update(total_loss=losses_reduced, **loss_dict_reduced)
 
-
+            self.iteration = self.iteration + 1
             # --------- Logging ----------
-            if self.global_rank == 0 and global_step % self.params["meta"]["log_every"] == 0:
+            if self.global_rank == 0 and self.iteration % self.eval_params["meta"]["log_every"] == 0:
                 wandb.log(
                     {
                         "train/total_loss": self.total_loss_meter.avg,
@@ -138,12 +130,35 @@ class Trainer:
                         "train/koleo_loss": self.koleo_loss_meter.avg,
                         "train/lr": lr,
                         "train/wd": wd,
-                        "epoch": epoch,
-                        "global_step": global_step,
+                        "iteration": self.iteration,
                     }
                 )
 
-        avg_loss = total_loss / num_batches
-        if self.global_rank == 0:
-            print(f"epoch: {epoch:02d}, loss: {avg_loss.item():.5f}")
+            if self.iteration % self.eval_params['meta']['eval_every'] == 0:
 
+                dist.barrier()
+
+                if dist.get_rank() == 0:
+                    target_encoder = copy.deepcopy(self.model.teacher)
+
+                    evaluator = Evaluator(target_encoder, self.probe_train_loader,
+                                          self.probe_eval_loader, self.attributes,
+                                          self.eval_params)
+
+                    eval_metrics = evaluator.train_and_eval_probe(self.iteration)
+                    eval_metrics['epoch'] = self.iteration
+                    del target_encoder, evaluator
+                    wandb.log(eval_metrics)
+
+                dist.barrier()
+
+            # if (epoch + 1) % params['meta']['save_every'] == 0:
+            #     trainer._save_snapshot(epoch)
+
+    def apply_optim_scheduler(self, lr, wd, last_layer_lr):
+        for param_group in self.optimizer.param_groups:
+            is_last_layer = param_group["is_last_layer"]
+            lr_multiplier = param_group["lr_multiplier"]
+            wd_multiplier = param_group["wd_multiplier"]
+            param_group["weight_decay"] = wd * wd_multiplier
+            param_group["lr"] = (last_layer_lr if is_last_layer else lr) * lr_multiplier

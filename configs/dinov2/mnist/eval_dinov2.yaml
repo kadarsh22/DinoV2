@@ -16,6 +16,7 @@ data:
 
 trainer:
   max_epochs: 100
+  num_workers: 4
 
 probe:
   epochs: 100

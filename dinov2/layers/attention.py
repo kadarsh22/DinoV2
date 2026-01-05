@@ -6,7 +6,7 @@
 # References:
 #   https://github.com/facebookresearch/dino/blob/master/vision_transformer.py
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/models/vision_transformer.py
-
+from __future__ import annotations
 import logging
 import os
 import warnings

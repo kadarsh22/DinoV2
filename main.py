@@ -1,51 +1,36 @@
 import argparse
 import pprint
-import copy
-import os
+import torch
 import wandb
 import torch.distributed as dist
 from data.data_loader import build_dataloaders
 from src.trainer import Trainer
-from evals.evaluator import Evaluator
+from src.helper import build_optimizer, build_schedulers
 from src.ssl_meta_arch import SSLMetaArch
 from utils.distributed import ddp_setup, set_seed_custom, is_main_process, get_world_size
 
 from torch.distributed import destroy_process_group
 from utils.utils import setup_logging, load_yaml
-from utils.visualisation import plot_and_log_crops
+from utils.config import setup
+from utils.visualisation import plot_crops_from_dataset
 
 
 def main(args):
     ddp_setup()
     set_seed_custom(seed=args.seed)
     rank = dist.get_rank()
-    logger = setup_logging(rank)
-
-    params = load_yaml(args.train_fname)
+    train_params = setup(args)
     eval_params = load_yaml(args.eval_fname)
-
-    params['data']['global_crop_scale'] = args.global_crop_scale
-    params['data']['local_crop_scale'] = args.local_crop_scale
-    params['optimization']['lr'] = args.lr
-    params['optimization']['temp_start'] = args.temp_start
-    params['optimization']['temp_end'] = args.temp_end
-    params['optimization']['temp_warmup_epochs'] = args.temp_warmup_epochs
-    params['optimization']['warmup_epochs'] = args.warmup_epochs
-
-    params['meta']['snapshot_path'] = os.path.join(params['meta']['snapshot_path'], params['data']['dataset'], params['meta']['method_name'])
-
-    if os.path.exists(params['meta']['snapshot_path']):
-        raise FileExistsError(f"Folder already exists: {params['meta']['snapshot_path']}")
-    combined_config = {"train": params, "eval": eval_params,}
+    combined_config = {"train": train_params, "eval": eval_params,}
 
     if rank == 0:
-        pprint.pprint(params)
+        pprint.pprint(train_params)
         pprint.pprint(eval_params)
 
     if is_main_process():
         wandb.init(
             project="ijepa-cmnist",
-            name=params['tag'] ,
+            name=args.run_name ,
                  # +'_tau_start_'+str(args.tau_start)+'_tau_end_'+str(args.tau_end)+'_warmup_' +str(args.warmup_epochs),
             config=combined_config,
         )
@@ -53,44 +38,24 @@ def main(args):
 
 
     (unsupervised_loader, unsupervised_sampler,
-    probe_train_loader, probe_eval_loader, attributes) = build_dataloaders(params['meta']['method_name'], params['data'], eval_params)
+    probe_train_loader, probe_eval_loader, attributes) = build_dataloaders(args.dataset, args.dataset_path,  train_params, eval_params)
 
-    samples = next(iter(unsupervised_loader))['views']
-    fig = plot_and_log_crops(samples, n_samples=10, upsample_locals_to=224)
+    fig = plot_crops_from_dataset(unsupervised_loader.dataset, n=10, upsample_locals_to=224)
     wandb.log({"Training samples": wandb.Image(fig)})
 
-    model = SSLMetaArch(cfg).to(torch.device("cuda"))
+    model = SSLMetaArch(train_params).to(torch.device("cuda"))
     model.prepare_for_distributed_training()
 
-    optimizer, = build_optimizer(model)
-    lr_schedule, wd_schedule, momentum_schedule,teacher_temp_schedule,last_layer_lr_schedule = build_schedulers()
+    optimizer = build_optimizer(train_params, model.get_params_groups())
+    lr_schedule, wd_schedule, momentum_schedule,teacher_temp_schedule,last_layer_lr_schedule = build_schedulers(train_params)
 
     trainer = Trainer(model, unsupervised_loader, unsupervised_sampler, optimizer,
-                      lr_schedule, wd_schedule, momentum_schedule,teacher_temp_schedule,last_layer_lr_schedule, params)
+                      lr_schedule, wd_schedule, momentum_schedule,teacher_temp_schedule,last_layer_lr_schedule,
+                      model.fp16_scaler, probe_train_loader, probe_eval_loader, attributes, train_params, eval_params)
 
-    for epoch in range(trainer.epochs_run, params['optimization']['epochs']):
-        trainer.train(epoch)
-
-        if (epoch + 1) % params['meta']['eval_every'] == 0:
-
-            dist.barrier()
-
-            if dist.get_rank() == 0:
-
-                target_encoder = copy.deepcopy(trainer.student.module.backbone)
-
-                evaluator = Evaluator(target_encoder, probe_train_loader, probe_eval_loader, attributes, eval_params, logger)
-
-                eval_metrics = evaluator.train_and_eval_probe(epoch)
-                eval_metrics['epoch'] = epoch
-                del target_encoder, evaluator
-                wandb.log(eval_metrics)
-
-            dist.barrier()
-
-
-        # if (epoch + 1) % params['meta']['save_every'] == 0:
-        #     trainer._save_snapshot(epoch)
+    OFFICIAL_EPOCH_LENGTH = train_params.train.OFFICIAL_EPOCH_LENGTH
+    max_iter = train_params.optim.epochs * OFFICIAL_EPOCH_LENGTH
+    trainer.train(max_iter)
 
     destroy_process_group()
     if is_main_process():
@@ -98,7 +63,24 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--train_fname', type=str, help='name of config file to load', default='configs/dinov2/mnist/train_dinov2.yaml')
+    parser.add_argument('--output_dir', type=str, help='name of config file to load',
+                        default='/vol/research/project_storage/dino_outputs')
+    parser.add_argument("opts",
+                        help=""" Modify config options at the end of the command. 
+                        For Yacs configs, use space-separated "PATH.KEY VALUE" pairs.
+                        For python-based LazyConfig, use "path.key=value". """.strip(),
+                        default=None, nargs=argparse.REMAINDER,)
+    parser.add_argument("--config-file", default="configs/train/vits16.yaml", metavar="FILE",
+                        help="path to config file")
+
+    parser.add_argument('--run_name', type=str, help='wandb run name',
+                        default='test')
+
+    parser.add_argument('--dataset', type=str, help='wandb run name', default='cmnist')
+    parser.add_argument('--dataset_path', type=str, help='path to the dataset',
+                        default='/scratch/ak03476/cmnist_lff/ijepa_data/uncorrelated/ColoredMNIST-Skewed0.9-Severity1')
+
+
     parser.add_argument('--eval_fname', type=str, help='name of config file to load', default='configs/dinov2/mnist/eval_dinov2.yaml')
     parser.add_argument('--seed', type=int, help='random seed', default=123)
 

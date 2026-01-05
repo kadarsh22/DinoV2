@@ -42,7 +42,6 @@ def build_schedulers(cfg):
         : cfg.optim["freeze_last_layer_epochs"] * OFFICIAL_EPOCH_LENGTH
     ] = 0  # mimicking the original schedules
 
-    logger.info("Schedulers ready.")
 
     return (
         lr_schedule,

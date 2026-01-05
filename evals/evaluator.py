@@ -9,9 +9,8 @@ from torch.utils.data import DataLoader, TensorDataset
 from evals.eval_utils import _need_cache, _cleanup_cache_dir, _load_cached
 
 class Evaluator:
-    def __init__(self, target_encoder, probe_train_loader, probe_eval_loader, attributes, params, logger) -> None:
+    def __init__(self, target_encoder, probe_train_loader, probe_eval_loader, attributes, params) -> None:
         self.params = params
-        self.logger = logger
         self.local_rank = int(os.environ["LOCAL_RANK"])
         self.global_rank = int(os.environ["RANK"])
         self.model = target_encoder.to(self.local_rank)

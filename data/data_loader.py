@@ -43,45 +43,43 @@ def _imagenet_norm():
     return Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
 
 
-def _infer_dataset(data_cfg: Dict[str, Any]) -> Tuple[Dataset, Dataset, int, Any]:
+def _infer_dataset(dataset, dataset_path, cfg: Dict[str, Any]) -> Tuple[Dataset, Dataset, int, Any]:
     """
     Returns (train_dataset, val_dataset, num_classes, attributes)
     """
-    name = data_cfg['dataset'].lower()
 
-    if name in {"cifar10", "cifar-10"}:
-        train = torchvision.datasets.CIFAR10(data_cfg['root'], train=True, download=True)
-        val = torchvision.datasets.CIFAR10(data_cfg['root'], train=False, download=True)
+    if dataset in {"cifar10", "cifar-10"}:
+        train = torchvision.datasets.CIFAR10(dataset_path, train=True, download=True)
+        val = torchvision.datasets.CIFAR10(dataset_path, train=False, download=True)
         return train, val, 10, False
 
-    if name in {"cmnist"}:
-        transform_probe = Compose([Resize(data_cfg['img_size']), CenterCrop(data_cfg['img_size']), ToTensor(),
+    if dataset in {"cmnist"}:
+        img_size = 224
+        transform_probe = Compose([Resize(img_size), CenterCrop(img_size), ToTensor(),
                                    Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x),
                                    Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))])
 
-        train = AttributeDataset(root=data_cfg['root'], split='train', transform=transform_probe)
-        val = AttributeDataset(root=data_cfg['root'], split='valid', transform=transform_probe)
+        train = AttributeDataset(root=dataset_path, split='train')
+        val = AttributeDataset(root=dataset_path, split='valid', transform=transform_probe)
         attributes = [AttributeSpec("digit", num_classes=10, index=0), AttributeSpec("color", num_classes=10,
                                                                                      index=1)]
         return train, val, 10, attributes
 
-    if name in {"mnist"}:
-        transform_probe = Compose([Resize(data_cfg['img_size']), CenterCrop(data_cfg['img_size']), ToTensor(),
+    if dataset in {"mnist"}:
+
+        img_size = 224
+        transform_probe = Compose([Resize(img_size), CenterCrop(img_size), ToTensor(),
                                    Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x),
                                    Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))])
 
-        train = torchvision.datasets.MNIST(data_cfg['root'], train=True, transform=transform_probe)
-        val = torchvision.datasets.MNIST(data_cfg['root'], train=False, transform=transform_probe)
+        train = torchvision.datasets.MNIST(dataset_path, train=True, transform=transform_probe)
+        val = torchvision.datasets.MNIST(dataset_path, train=False, transform=transform_probe)
         attributes = [AttributeSpec("digit", num_classes=10, index=0)]
         return train, val, 10, attributes
 
-    raise ValueError(
-        f"Unknown dataset '{data_cfg['dataset']}'. Supported: cifar10, cifar100, mnist/cmnist"
-    )
 
-
-def build_dataloaders(method_name: str, data_config, eval_params):
-    train_dataset, val_dataset, num_classes, attributes = _infer_dataset(data_config)
+def build_dataloaders(dataset, dataset_path, train_params, eval_params):
+    train_dataset, val_dataset, num_classes, attributes = _infer_dataset(dataset, dataset_path, train_params)
 
     train_size = int(0.8 * len(val_dataset))
     test_size = int(0.2 * len(val_dataset))
@@ -90,68 +88,52 @@ def build_dataloaders(method_name: str, data_config, eval_params):
     probe_train_dataset, probe_test_dataset = random_split(val_dataset, [train_size, test_size],  generator=g)
 
     probe_train_loader = DataLoader(probe_train_dataset, batch_size=eval_params['probe']['batch_size'], shuffle=True, drop_last=False,
-                                    num_workers=data_config['num_workers'], pin_memory=True)
+                                    num_workers=eval_params['trainer']['num_workers'], pin_memory=True)
     probe_test_loader = DataLoader(probe_test_dataset, batch_size=eval_params['probe']['batch_size'], shuffle=True, drop_last=False,
-                                   num_workers=data_config['num_workers'], pin_memory=True, )
+                                   num_workers=eval_params['trainer']['num_workers'], pin_memory=True, )
     rank = dist.get_rank()
     world_size = dist.get_world_size()
 
-    if method_name == "dinov2":
-        img_size = cfg.crops.global_crops_size
-        patch_size = cfg.student.patch_size
-        n_tokens = (img_size // patch_size) ** 2
-        mask_generator = MaskingGenerator(
-            input_size=(img_size // patch_size, img_size // patch_size),
-            max_num_patches=0.5 * img_size // patch_size * img_size // patch_size,
-        )
+    img_size = train_params.crops.global_crops_size
+    patch_size = train_params.student.patch_size
+    n_tokens = (img_size // patch_size) ** 2
+    mask_generator = MaskingGenerator(
+        input_size=(img_size // patch_size, img_size // patch_size),
+        max_num_patches=0.5 * img_size // patch_size * img_size // patch_size,
+    )
 
-        data_transform = DataAugmentationDINO(
-            cfg.crops.global_crops_scale,
-            cfg.crops.local_crops_scale,
-            cfg.crops.local_crops_number,
-            global_crops_size=cfg.crops.global_crops_size,
-            local_crops_size=cfg.crops.local_crops_size,
-        )
+    data_transform = DataAugmentationDINO(
+        train_params.crops.global_crops_scale,
+        train_params.crops.local_crops_scale,
+        train_params.crops.local_crops_number,
+        global_crops_size=train_params.crops.global_crops_size,
+        local_crops_size=train_params.crops.local_crops_size,
+    )
 
-        collate_fn = partial(
-            collate_data_and_cast,
-            mask_ratio_tuple=cfg.ibot.mask_ratio_min_max,
-            mask_probability=cfg.ibot.mask_sample_probability,
-            n_tokens=n_tokens,
-            mask_generator=mask_generator,
-            dtype=inputs_dtype,
-        )
+    setattr(train_dataset, "transform", data_transform)
+    setattr(train_dataset, "target_transform", lambda _: ())
 
-        train_ds = DictDataset(train_dataset, x_key="views", y_key="label", transform=data_transform)
-        sampler_type = SamplerType.DISTRIBUTED
-        train_loader, train_sampler = make_data_loader(
-            dataset=train_ds,
-            batch_size=cfg.train.batch_size_per_gpu,
-            num_workers=cfg.train.num_workers,
-            shuffle=True,
-            seed=start_iter,  # TODO: Fix this -- cfg.train.seed
-            sampler_type=sampler_type,
-            sampler_advance=0,  # TODO(qas): fix this -- start_iter * cfg.train.batch_size_per_gpu,
-            drop_last=True,
-            collate_fn=collate_fn,
-        )
+    collate_fn = partial(
+        collate_data_and_cast,
+        mask_ratio_tuple=train_params.ibot.mask_ratio_min_max,
+        mask_probability=train_params.ibot.mask_sample_probability,
+        n_tokens=n_tokens,
+        mask_generator=mask_generator,
+        dtype=torch.half,
+    )
 
 
-    elif method_name == "ijepa":
-        train_transform = IJEPATransform(normalize={'mean': [0.5, 0.5, 0.5], 'std': [0.5, 0.5, 0.5]})
-        collator = IJEPAMaskCollator(input_size=(224, 224), patch_size=cfg.patch_size,
-                                     enc_mask_scale=cfg.enc_mask_scale, pred_mask_scale=cfg.pred_mask_scale,
-                                     aspect_ratio=cfg.aspect_ratio,
-                                     nenc=cfg.num_enc_masks,
-                                     npred=cfg.num_pred_masks,
-                                     min_keep=cfg.min_keep,
-                                     allow_overlap=False,
-                                     )
-        train_ds = DictDataset(train_dataset, x_key="views", y_key="label", transform=train_transform)
-        train_loader = torch.utils.data.DataLoader(train_ds, collate_fn=collator,
-                                                   batch_size=cfg.batch_size, num_workers=cfg.num_workers,
-                                                   persistent_workers=False)
-    else:
-        raise ValueError(f"Unknown method name '{method_name}'. Supported: dino, ijepa")
+    sampler_type = SamplerType.DISTRIBUTED
+    train_loader, train_sampler = make_data_loader(
+        dataset=train_dataset,
+        batch_size=train_params.train.batch_size_per_gpu,
+        num_workers=train_params.train.num_workers,
+        shuffle=True,
+        seed=0,  # TODO: Fix this -- cfg.train.seed
+        sampler_type=sampler_type,
+        sampler_advance=0,  # TODO(qas): fix this -- start_iter * cfg.train.batch_size_per_gpu,
+        drop_last=True,
+        collate_fn=collate_fn,
+    )
 
     return train_loader, train_sampler, probe_train_loader, probe_test_loader, attributes

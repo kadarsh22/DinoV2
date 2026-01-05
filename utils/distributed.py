@@ -9,6 +9,7 @@ import os
 
 import torch
 import torch.distributed as dist
+import dinov2.distributed as distributed
 
 from logging import getLogger
 from torch.distributed import init_process_group
@@ -68,9 +69,7 @@ def set_seed_custom(seed: int = 32) -> None:
         print(f"Random seed set as {seed}")
 
 def ddp_setup():
-    init_process_group(backend="nccl")
-    local_rank = int(os.environ["LOCAL_RANK"])
-    torch.cuda.set_device(local_rank)
+    distributed.enable(overwrite=True)
 
 def is_main_process() -> bool:
     """Check if current process is the main (rank 0) process."""

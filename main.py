@@ -41,7 +41,8 @@ def main(args):
     probe_train_loader, probe_eval_loader, attributes) = build_dataloaders(args.dataset, args.dataset_path,  train_params, eval_params)
 
     fig = plot_crops_from_dataset(unsupervised_loader.dataset, n=10, upsample_locals_to=224)
-    wandb.log({"Training samples": wandb.Image(fig)})
+    if is_main_process():
+        wandb.log({"Training samples": wandb.Image(fig)})
 
     model = SSLMetaArch(train_params).to(torch.device("cuda"))
     model.prepare_for_distributed_training()
@@ -64,7 +65,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--output_dir', type=str, help='name of config file to load',
-                        default='/vol/research/project_storage/dino_outputs')
+                        default='/mnt/fast/nobackup/scratch4weeks/ak03476/dino_outputs')
     parser.add_argument("opts",
                         help=""" Modify config options at the end of the command. 
                         For Yacs configs, use space-separated "PATH.KEY VALUE" pairs.
@@ -78,7 +79,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--dataset', type=str, help='wandb run name', default='cmnist')
     parser.add_argument('--dataset_path', type=str, help='path to the dataset',
-                        default='/scratch/ak03476/cmnist_lff/ijepa_data/uncorrelated/ColoredMNIST-Skewed0.9-Severity1')
+                        default='/mnt/fast/nobackup/users/ak03476/data/ColoredMNIST-Skewed0.9-Severity1')
 
 
     parser.add_argument('--eval_fname', type=str, help='name of config file to load', default='configs/dinov2/mnist/eval_dinov2.yaml')

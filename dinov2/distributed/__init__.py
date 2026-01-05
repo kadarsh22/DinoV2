@@ -261,8 +261,17 @@ def enable(*, set_cuda_current_device: bool = True, overwrite: bool = False, all
             _check_env_variable(key, value)
         os.environ[key] = value
 
-    dist.init_process_group(backend="nccl")
-    dist.barrier()
+    try:
+        dist.init_process_group(
+            backend="nccl",
+            init_method="env://",
+            device_id=torch.device("cuda", torch_env.local_rank),
+        )
+        dist.barrier(device_ids=[torch_env.local_rank])
+    except TypeError:
+        # Older torch: no device_id/device_ids kwargs
+        dist.init_process_group(backend="nccl", init_method="env://")
+        dist.barrier()
 
     # Finalize setup
     _LOCAL_RANK = torch_env.local_rank

@@ -6,6 +6,8 @@ from functools import partial
 from torchvision.transforms import (
     Compose, Resize, CenterCrop, ToTensor, Normalize, Lambda
 )
+import torch.distributed as dist
+from torch.utils.data import DistributedSampler, DataLoader
 from torch.utils.data import random_split
 from data.attributes import AttributeSpec
 from data.loaders import make_data_loader, SamplerType
@@ -58,10 +60,12 @@ def build_dataloaders(dataset, train_params, eval_params):
     g = torch.Generator().manual_seed(0)
     probe_train_dataset, probe_test_dataset = random_split(val_dataset, [train_size, test_size],  generator=g)
 
-    probe_train_loader = DataLoader(probe_train_dataset, batch_size=eval_params['probe']['batch_size'], shuffle=True, drop_last=False,
-                                    num_workers=eval_params['trainer']['num_workers'], pin_memory=True)
-    probe_test_loader = DataLoader(probe_test_dataset, batch_size=eval_params['probe']['batch_size'], shuffle=True, drop_last=False,
-                                   num_workers=eval_params['trainer']['num_workers'], pin_memory=True, )
+    probe_train_sampler = DistributedSampler(probe_train_dataset, shuffle=True)
+    probe_test_sampler = DistributedSampler(probe_test_dataset, shuffle=False)
+    probe_train_loader = DataLoader(probe_train_dataset, batch_size=eval_params['probe']['batch_size'], drop_last=False,
+                        sampler=probe_train_sampler, num_workers=eval_params['trainer']['num_workers'], pin_memory=True)
+    probe_test_loader = DataLoader(probe_test_dataset, batch_size=eval_params['probe']['batch_size'], shuffle=False, drop_last=False,
+                                   sampler=probe_test_sampler, num_workers=eval_params['trainer']['num_workers'], pin_memory=True, )
 
     img_size = train_params.crops.global_crops_size
     patch_size = train_params.student.patch_size

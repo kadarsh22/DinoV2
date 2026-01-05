@@ -1,19 +1,21 @@
 import argparse
 import pprint
+
 import torch
-import wandb
 import torch.distributed as dist
+import wandb
+from torch.distributed import destroy_process_group
+from torchinfo import summary
 
 from data.data_loader import build_dataloaders
-from src.trainer import Trainer
 from src.helper import build_optimizer, build_schedulers
 from src.ssl_meta_arch import SSLMetaArch
-from torch.distributed import destroy_process_group
-from utils.distributed import ddp_setup, set_seed_custom, is_main_process
-from utils.utils import load_yaml
+from src.trainer import Trainer
 from utils.config import setup
+from utils.distributed import ddp_setup, is_main_process, set_seed_custom
+from utils.utils import load_yaml
 from utils.visualisation import plot_crops_from_dataset
-from torchinfo import summary
+
 
 
 def main(args):

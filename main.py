@@ -3,14 +3,13 @@ import pprint
 import torch
 import wandb
 import torch.distributed as dist
+
 from data.data_loader import build_dataloaders
 from src.trainer import Trainer
 from src.helper import build_optimizer, build_schedulers
 from src.ssl_meta_arch import SSLMetaArch
-from utils.distributed import ddp_setup, set_seed_custom, is_main_process
-
-
 from torch.distributed import destroy_process_group
+from utils.distributed import ddp_setup, set_seed_custom, is_main_process
 from utils.utils import load_yaml
 from utils.config import setup
 from utils.visualisation import plot_crops_from_dataset
@@ -20,7 +19,9 @@ def main(args):
     ddp_setup()
     set_seed_custom(seed=args.seed)
     rank = dist.get_rank()
+
     train_params = setup(args)
+    train_params.train.dataset_path = args.dataset_path
     eval_params = load_yaml(args.eval_fname)
     combined_config = {"train": train_params, "eval": eval_params,}
 
@@ -38,10 +39,11 @@ def main(args):
 
 
     (unsupervised_loader, unsupervised_sampler,
-    probe_train_loader, probe_eval_loader, attributes) = build_dataloaders(args.dataset, args.dataset_path,  train_params, eval_params)
+    probe_train_loader, probe_eval_loader, attributes, normalisation_params) = build_dataloaders(args.dataset, train_params, eval_params)
 
-    fig = plot_crops_from_dataset(unsupervised_loader.dataset, n=10, upsample_locals_to=224)
     if is_main_process():
+        fig = plot_crops_from_dataset(unsupervised_loader.dataset, n=10, upsample_locals_to=224,
+                                      denorm_mean=normalisation_params['mean'], denorm_std=normalisation_params['std'])
         wandb.log({"Training samples": wandb.Image(fig)})
 
     model = SSLMetaArch(train_params).to(torch.device("cuda"))
@@ -77,7 +79,7 @@ if __name__ == '__main__':
                         default='/mnt/fast/nobackup/scratch4weeks/ak03476/dino_outputs')
     parser.add_argument('--dataset', type=str, help='wandb run name', default='cmnist')
     parser.add_argument('--dataset_path', type=str, help='path to the dataset',
-                        default='/mnt/fast/nobackup/users/ak03476/data/ColoredMNIST-Skewed0.9-Severity1')
+                        default='/mnt/fast/nobackup/users/ak03476/data/verfied_cmnist/uncorrelated/ColoredMNIST-Skewed0.9-Severity1')
 
 
     parser.add_argument('--eval_fname', type=str, help='name of config file to load', default='configs/dinov2/mnist/eval_dinov2.yaml')

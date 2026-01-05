@@ -6,11 +6,8 @@ from functools import partial
 from torchvision.transforms import (
     Compose, Resize, CenterCrop, ToTensor, Normalize, Lambda
 )
-import torch.distributed as dist
 from torch.utils.data import random_split
 from data.attributes import AttributeSpec
-from lightly.data.collate import IJEPAMaskCollator
-from lightly.transforms.ijepa_transform import IJEPATransform
 from data.loaders import make_data_loader, SamplerType
 from data.augmentations import DataAugmentationDINO
 from data.masking import MaskingGenerator
@@ -43,7 +40,7 @@ def _imagenet_norm():
     return Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
 
 
-def _infer_dataset(dataset, dataset_path, cfg: Dict[str, Any]) -> Tuple[Dataset, Dataset, int, Any]:
+def _infer_dataset(dataset, cfg: Dict[str, Any]) -> Tuple[Dataset, Dataset, int, Any]:
     """
     Returns (train_dataset, val_dataset, num_classes, attributes)
     """
@@ -54,16 +51,15 @@ def _infer_dataset(dataset, dataset_path, cfg: Dict[str, Any]) -> Tuple[Dataset,
         return train, val, 10, False
 
     if dataset in {"cmnist"}:
-        img_size = 224
-        transform_probe = Compose([Resize(img_size), CenterCrop(img_size), ToTensor(),
-                                   Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x),
-                                   Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))])
+        normalisation_params = {'mean': [0.5, 0.5, 0.5], 'std': [0.5, 0.5, 0.5]}
+        transform_probe = Compose([Resize(cfg.crops.global_crops_size), CenterCrop(cfg.crops.global_crops_size), ToTensor(),
+                                   Normalize(mean=normalisation_params['mean'], std=normalisation_params['std'])])
 
-        train = AttributeDataset(root=dataset_path, split='train')
-        val = AttributeDataset(root=dataset_path, split='valid', transform=transform_probe)
+        train = AttributeDataset(root=cfg.train.dataset_path, split='train')
+        val = AttributeDataset(root=cfg.train.dataset_path, split='valid', transform=transform_probe)
         attributes = [AttributeSpec("digit", num_classes=10, index=0), AttributeSpec("color", num_classes=10,
                                                                                      index=1)]
-        return train, val, 10, attributes
+        return train, val, 10, attributes, normalisation_params
 
     if dataset in {"mnist"}:
 
@@ -78,21 +74,19 @@ def _infer_dataset(dataset, dataset_path, cfg: Dict[str, Any]) -> Tuple[Dataset,
         return train, val, 10, attributes
 
 
-def build_dataloaders(dataset, dataset_path, train_params, eval_params):
-    train_dataset, val_dataset, num_classes, attributes = _infer_dataset(dataset, dataset_path, train_params)
+def build_dataloaders(dataset, train_params, eval_params):
+    train_dataset, val_dataset, num_classes, attributes, normalisation_params = _infer_dataset(dataset, train_params)
 
     train_size = int(0.8 * len(val_dataset))
     test_size = int(0.2 * len(val_dataset))
 
-    g = torch.Generator().manual_seed(123)
+    g = torch.Generator().manual_seed(0)
     probe_train_dataset, probe_test_dataset = random_split(val_dataset, [train_size, test_size],  generator=g)
 
     probe_train_loader = DataLoader(probe_train_dataset, batch_size=eval_params['probe']['batch_size'], shuffle=True, drop_last=False,
                                     num_workers=eval_params['trainer']['num_workers'], pin_memory=True)
     probe_test_loader = DataLoader(probe_test_dataset, batch_size=eval_params['probe']['batch_size'], shuffle=True, drop_last=False,
                                    num_workers=eval_params['trainer']['num_workers'], pin_memory=True, )
-    rank = dist.get_rank()
-    world_size = dist.get_world_size()
 
     img_size = train_params.crops.global_crops_size
     patch_size = train_params.student.patch_size
@@ -123,7 +117,7 @@ def build_dataloaders(dataset, dataset_path, train_params, eval_params):
     )
 
 
-    sampler_type = SamplerType.DISTRIBUTED
+    sampler_type = SamplerType.SHARDED_INFINITE
     train_loader, train_sampler = make_data_loader(
         dataset=train_dataset,
         batch_size=train_params.train.batch_size_per_gpu,
@@ -136,4 +130,4 @@ def build_dataloaders(dataset, dataset_path, train_params, eval_params):
         collate_fn=collate_fn,
     )
 
-    return train_loader, train_sampler, probe_train_loader, probe_test_loader, attributes
+    return train_loader, train_sampler, probe_train_loader, probe_test_loader, attributes, normalisation_params

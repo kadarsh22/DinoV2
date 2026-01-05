@@ -39,15 +39,15 @@ class MaybeToTensor(transforms.ToTensor):
 
 
 # Use timm's names
-IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
-IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
+IMAGENET_DEFAULT_MEAN = (0.5, 0.5, 0.5) ##TODO
+IMAGENET_DEFAULT_STD = (0.5, 0.5, 0.5)  ##todo
 
 
 def make_normalize_transform(
     mean: Sequence[float] = IMAGENET_DEFAULT_MEAN,
     std: Sequence[float] = IMAGENET_DEFAULT_STD,
 ) -> transforms.Normalize:
-    return transforms.Normalize(mean=mean, std=std)
+    return transforms.Normalize(mean=(0.5,0.5,0.5), std=(0.5,0.5,0.5))
 
 
 # This roughly matches torchvision's preset for classification training:

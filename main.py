@@ -110,10 +110,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="/mnt/fast/nobackup/scratch4weeks/ak03476/dino_outputs",
+        default="/leonardo_work/EUHPC_D27_070/cache/dinv2_outputs",
         help="Output directory for logs/checkpoints",
     )
-    parser.add_argument("--seed", type=int, default=123, help="Random seed")
+    parser.add_argument("--seed", type=int, default=0, help="Random seed")
 
     # ---------------------------
     # Dataset

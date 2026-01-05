@@ -28,7 +28,6 @@ class Evaluator:
             base_cache = self.params["meta"]["cache_dir"]
             job_id = os.environ.get("SLURM_JOB_ID") or os.environ.get("SLURM_ARRAY_JOB_ID") or "nojid"
             cache_dir = os.path.join(base_cache, str(job_id))
-            cache_dir = '/mnt/fast/nobackup/scratch4weeks/ak03476/cache'
         os.makedirs(cache_dir, exist_ok=True)
         self.model.eval()
         probe = self._train_probe(cache_dir)

@@ -1,34 +1,46 @@
 #!/bin/bash
-#SBATCH --job-name=dino_mnist
-#SBATCH --nodes=4
+#SBATCH --job-name=dino_cmnist
+#SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
 #SBATCH --partition=boost_usr_prod
 #SBATCH --time=00-05:00:00
-#SBATCH -o slurm_outputs/%x_%j_%a.out
-#SBATCH -e slurm_outputs/%x_%j_%a.err
+#SBATCH -o slurm_outputs/%x_%j.out
+#SBATCH -e slurm_outputs/%x_%j.err
 
 set -euo pipefail
-mkdir -p slurm_outputs || true
+mkdir -p slurm_outputs
 
-MASTER_ADDR="$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n1)"
-MASTER_PORT=29500
+# --- rendezvous info ---
+MASTER_ADDR="$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)"
+MASTER_PORT=$((29500 + (SLURM_JOB_ID % 1000)))   # reduce port collisions
 
-export LOGLEVEL=INFO
-export OMP_NUM_THREADS="$SLURM_CPUS_PER_TASK"
+export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 export NCCL_DEBUG=WARN
-export WANDB_MODE=offline
+export LOGLEVEL=INFO
 
+# W&B
+export WANDB_MODE=offline
+export WANDB_DIR="${SLURM_SUBMIT_DIR}/wandb"
+
+# --- conda ---
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate dinov2lightly
 
+# --- run ---
 srun torchrun \
-  --nnodes="$SLURM_NNODES" \
-  --node_rank="$SLURM_NODEID" \
+  --nnodes="${SLURM_NNODES}" \
+  --node_rank="${SLURM_NODEID}" \
   --nproc_per_node=1 \
   --rdzv_backend=c10d \
   --rdzv_endpoint="${MASTER_ADDR}:${MASTER_PORT}" \
   --rdzv_id="${SLURM_JOB_ID}" \
-  main.py
+  main.py \
+    --config-file configs/train/cmnist/vits16.yaml \
+    --eval_fname configs/eval/cmnist/eval_dinov2.yaml \
+    --run_name "dinov2_cmnist_baseline" \
+    --dataset cmnist \
+    --dataset_path "/leonardo_work/EUHPC_D27_070/data/cmnist_lff/ijepa_data/uncorrelated/ColoredMNIST-Skewed0.9-Severity1" \
+    --seed 123

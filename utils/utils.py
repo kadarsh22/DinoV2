@@ -11,3 +11,6 @@ def setup_logging(rank):
     logger = logging.getLogger()
     logger.setLevel(logging.INFO if rank == 0 else logging.ERROR)
     return logger
+
+def unwrap_fsdp(m):
+    return getattr(m, "_fsdp_wrapped_module", m)

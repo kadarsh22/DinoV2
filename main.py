@@ -7,10 +7,11 @@ from data.data_loader import build_dataloaders
 from src.trainer import Trainer
 from src.helper import build_optimizer, build_schedulers
 from src.ssl_meta_arch import SSLMetaArch
-from utils.distributed import ddp_setup, set_seed_custom, is_main_process, get_world_size
+from utils.distributed import ddp_setup, set_seed_custom, is_main_process
+
 
 from torch.distributed import destroy_process_group
-from utils.utils import setup_logging, load_yaml
+from utils.utils import load_yaml
 from utils.config import setup
 from utils.visualisation import plot_crops_from_dataset
 
@@ -24,7 +25,6 @@ def main(args):
     combined_config = {"train": train_params, "eval": eval_params,}
 
     if rank == 0:
-        pprint.pprint(train_params)
         pprint.pprint(eval_params)
 
     if is_main_process():
@@ -64,19 +64,17 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--output_dir', type=str, help='name of config file to load',
-                        default='/mnt/fast/nobackup/scratch4weeks/ak03476/dino_outputs')
+
     parser.add_argument("opts",
                         help=""" Modify config options at the end of the command. 
                         For Yacs configs, use space-separated "PATH.KEY VALUE" pairs.
                         For python-based LazyConfig, use "path.key=value". """.strip(),
                         default=None, nargs=argparse.REMAINDER,)
-    parser.add_argument("--config-file", default="configs/train/vits16.yaml", metavar="FILE",
-                        help="path to config file")
 
-    parser.add_argument('--run_name', type=str, help='wandb run name',
-                        default='test')
-
+    parser.add_argument("--config-file", default="configs/train/vits16.yaml", metavar="FILE", help="path to config file")
+    parser.add_argument('--run_name', type=str, help='wandb run name', default='test')
+    parser.add_argument('--output_dir', type=str, help='name of config file to load',
+                        default='/mnt/fast/nobackup/scratch4weeks/ak03476/dino_outputs')
     parser.add_argument('--dataset', type=str, help='wandb run name', default='cmnist')
     parser.add_argument('--dataset_path', type=str, help='path to the dataset',
                         default='/mnt/fast/nobackup/users/ak03476/data/ColoredMNIST-Skewed0.9-Severity1')

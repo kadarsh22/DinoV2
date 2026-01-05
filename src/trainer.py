@@ -7,18 +7,10 @@ import wandb
 import math
 import copy
 from dinov2.logging import MetricLogger
-
+from utils.distributed import is_main_process
 from src.utils.logging import AverageMeter, ddp_mean
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from evals.evaluator import Evaluator
-
-
-@torch.no_grad()
-def checksum(module):
-    s = torch.zeros((), device=torch.cuda.current_device())
-    for p in module.parameters():
-        if p.requires_grad:
-            s += p.detach().float().sum()
-    return s
 
 
 class Trainer:
@@ -124,12 +116,12 @@ class Trainer:
             if self.global_rank == 0 and self.iteration % self.eval_params["meta"]["log_every"] == 0:
                 wandb.log(
                     {
-                        "train/total_loss": self.total_loss_meter.avg,
-                        "train/dino_loss": self.dino_loss_meter.avg,
-                        "train/ibot_loss": self.ibot_loss_meter.avg,
-                        "train/koleo_loss": self.koleo_loss_meter.avg,
-                        "train/lr": lr,
-                        "train/wd": wd,
+                        "train/total_loss": self.metric_logger.meters['total_loss'].avg,
+                        "train/dino_local_crop_loss": self.metric_logger.meters['dino_local_crops_loss'].avg,
+                        "train/ibot_loss": self.metric_logger.meters['ibot_loss'].avg,
+                        "train/koleo_loss": self.metric_logger.meters['koleo_loss'].avg,
+                        "train/lr": self.metric_logger.meters['lr'].value,
+                        "train/wd": self.metric_logger.meters['wd'].value,
                         "iteration": self.iteration,
                     }
                 )
@@ -138,22 +130,28 @@ class Trainer:
 
                 dist.barrier()
 
-                if dist.get_rank() == 0:
-                    target_encoder = copy.deepcopy(self.model.teacher)
+                backbone_fsdp = self.model.student.backbone  # or self.model.teacher.backbone
+                backbone_fsdp.eval()
 
-                    evaluator = Evaluator(target_encoder, self.probe_train_loader,
-                                          self.probe_eval_loader, self.attributes,
-                                          self.eval_params)
-
-                    eval_metrics = evaluator.train_and_eval_probe(self.iteration)
-                    eval_metrics['epoch'] = self.iteration
-                    del target_encoder, evaluator
+                evaluator = Evaluator(
+                    backbone_fsdp,
+                    self.probe_train_loader,
+                    self.probe_eval_loader,
+                    self.attributes,
+                    self.eval_params,
+                )
+                eval_metrics = evaluator.train_and_eval_probe(self.iteration)
+                eval_metrics["iteration"] = self.iteration
+                if is_main_process():
                     wandb.log(eval_metrics)
 
                 dist.barrier()
 
-            # if (epoch + 1) % params['meta']['save_every'] == 0:
-            #     trainer._save_snapshot(epoch)
+                backbone_fsdp.train()
+                dist.barrier()
+
+        # if (epoch + 1) % params['meta']['save_every'] == 0:
+        #     trainer._save_snapshot(epoch)
 
     def apply_optim_scheduler(self, lr, wd, last_layer_lr):
         for param_group in self.optimizer.param_groups:

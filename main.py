@@ -55,7 +55,7 @@ def main(args):
     if is_main_process():
         summary(model.teacher.backbone, input_size=(1, 3, 224, 224), device="cuda")
         summary(model.teacher.dino_head, input_size=(1, model.embed_dim), device="cuda")
-        summary(model.teacher.ibot_head, input_size=(1, model.embed_dim), device="cuda")
+        # summary(model.teacher.ibot_head, input_size=(1, model.embed_dim), device="cuda")
 
     model.prepare_for_distributed_training()
 

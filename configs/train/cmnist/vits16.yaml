@@ -26,7 +26,7 @@ teacher:
   teacher_temp: 0.05
   warmup_teacher_temp_epochs: 10       # shorter warmup for small dataset
 optim:
-  epochs: 300
+  epochs: 100
   weight_decay: 0.04
   weight_decay_end: 0.4
   base_lr: 2e-5 # learning rate for a batch size of 1024

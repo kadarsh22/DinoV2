@@ -1,18 +1,18 @@
 #!/bin/bash
-#SBATCH --job-name=cmnist_teacher_temp
+#SBATCH --job-name=dinov2_22k_hp
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --partition=boost_usr_prod
-#SBATCH --time=00-03:00:00
-#SBATCH -o slurm_outputs/teacher_temp/%x_%A_%a.out
-#SBATCH -e slurm_outputs/teacher_temp/%x_%A_%a.err
-#SBATCH --array=0-3
+#SBATCH --time=00-02:00:00
+#SBATCH -o slurm_outputs/dinov2_hp/%x_%A_%a.out
+#SBATCH -e slurm_outputs/dinov2_hp/%x_%A_%a.err
+#SBATCH --array=0-23
 
 set -euo pipefail
-mkdir -p slurm_outputs
+mkdir -p slurm_outputs/dinov2_hp
 
 # -----------------------
 # Environment
@@ -29,22 +29,60 @@ export WANDB_DIR="${SLURM_SUBMIT_DIR}/wandb"
 # Dataset / configs
 # -----------------------
 DATASET="cmnist"
-DATASET_PATH="/leonardo_work/EUHPC_D27_070/data/cmnist_lff/ijepa_data/uncorrelated/ColoredMNIST-Skewed0.9-Severity1"
-TRAIN_CFG="configs/train/cmnist/vits16.yaml"
-EVAL_CFG="configs/eval/cmnist/eval_dinov2.yaml"
+DATASET_PATH="/leonardo_work/EUHPC_D27_070/data/cmnist_lff/ijepa_data/uncorrelated/ColoredMNIST-Skewed0.9-Severity1"   # set to absolute path if your code needs it
+TRAIN_CFG="configs/train/cmnist/vits16.yaml"  # <-- set to your yaml that contains the snippet you posted
 SEED=123
 
 # -----------------------
-# Teacher temp sweep
-# (final_momentum_teacher fixed at 1.0)
+# 24-run sweep (most relevant knobs)
+# Sweep: base_lr, weight_decay, momentum_teacher, teacher_temp
+# Total runs = 3 * 2 * 2 * 2 = 24  => array 0..23
 # -----------------------
-WARMUP_TEMPS=(0.04 0.04 0.02 0.04)
-FINAL_TEMPS=(0.07 0.10 0.10 0.05)
+LRS=(1e-5 2e-5 4e-5)
+WDS=(0.02 0.04)
+MOMS=(0.994 0.996)
+TTS=(0.05 0.06)
 
-WARMUP_T="${WARMUP_TEMPS[$SLURM_ARRAY_TASK_ID]}"
-FINAL_T="${FINAL_TEMPS[$SLURM_ARRAY_TASK_ID]}"
+# Fixed from your config
+WARMUP_TT="0.04"
+FINAL_MOM="1.0"
 
-RUN_NAME="cmnist_Tw${WARMUP_T}_Tf${FINAL_T}_job${SLURM_JOB_ID}_a${SLURM_ARRAY_TASK_ID}"
+# -----------------------
+# Index mapping
+# -----------------------
+N_LR=${#LRS[@]}
+N_WD=${#WDS[@]}
+N_MOM=${#MOMS[@]}
+N_TT=${#TTS[@]}
+TOTAL=$((N_LR * N_WD * N_MOM * N_TT))
+
+if [[ "${SLURM_ARRAY_TASK_ID}" -ge "${TOTAL}" ]]; then
+  echo "SLURM_ARRAY_TASK_ID=${SLURM_ARRAY_TASK_ID} out of range (TOTAL=${TOTAL})"
+  exit 1
+fi
+
+tid=${SLURM_ARRAY_TASK_ID}
+
+i_tt=$(( tid % N_TT ))
+tid=$(( tid / N_TT ))
+
+i_mom=$(( tid % N_MOM ))
+tid=$(( tid / N_MOM ))
+
+i_wd=$(( tid % N_WD ))
+tid=$(( tid / N_WD ))
+
+i_lr=$(( tid % N_LR ))
+
+LR="${LRS[$i_lr]}"
+WD="${WDS[$i_wd]}"
+MOM="${MOMS[$i_mom]}"
+TT="${TTS[$i_tt]}"
+
+RUN_NAME="in22k_vits7_lr${LR}_wd${WD}_mom${MOM}_tt${TT}_job${SLURM_JOB_ID}_a${SLURM_ARRAY_TASK_ID}"
+
+echo "RUN_NAME=${RUN_NAME}"
+echo "LR=${LR} WD=${WD} MOM=${MOM} TT=${TT} WARMUP_TT=${WARMUP_TT} FINAL_MOM=${FINAL_MOM}"
 
 # -----------------------
 # Launch
@@ -52,10 +90,12 @@ RUN_NAME="cmnist_Tw${WARMUP_T}_Tf${FINAL_T}_job${SLURM_JOB_ID}_a${SLURM_ARRAY_TA
 torchrun --standalone --nproc_per_node=1 main.py \
   --run_name "${RUN_NAME}" \
   --config-file "${TRAIN_CFG}" \
-  --eval_fname "${EVAL_CFG}" \
   --dataset "${DATASET}" \
   --dataset_path "${DATASET_PATH}" \
   --seed "${SEED}" \
-  teacher.final_momentum_teacher=1.0 \
-  teacher.warmup_teacher_temp="${WARMUP_T}" \
-  teacher.teacher_temp="${FINAL_T}"
+  optim.base_lr="${LR}" \
+  optim.weight_decay="${WD}" \
+  teacher.momentum_teacher="${MOM}" \
+  teacher.final_momentum_teacher="${FINAL_MOM}" \
+  teacher.warmup_teacher_temp="${WARMUP_TT}" \
+  teacher.teacher_temp="${TT}"

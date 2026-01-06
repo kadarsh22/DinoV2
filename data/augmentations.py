@@ -60,26 +60,26 @@ class DataAugmentationDINO(object):
         )
 
         # color distorsions / blurring
-        # color_jittering = transforms.Compose(
-        #     [
-        #         transforms.RandomApply(
-        #             [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
-        #             p=0.8,
-        #         ),
-        #         transforms.RandomGrayscale(p=0.2),
-        #     ]
-        # )
-        #
-        # global_transfo1_extra = GaussianBlur(p=1.0)
-        #
-        # global_transfo2_extra = transforms.Compose(
-        #     [
-        #         GaussianBlur(p=0.1),
-        #         transforms.RandomSolarize(threshold=128, p=0.2),
-        #     ]
-        # )
-        #
-        # local_transfo_extra = GaussianBlur(p=0.5)
+        color_jittering = transforms.Compose(
+            [
+                transforms.RandomApply(
+                    [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
+                    p=0.8,
+                ),
+                transforms.RandomGrayscale(p=0.2),
+            ]
+        )
+
+        global_transfo1_extra = GaussianBlur(p=1.0)
+
+        global_transfo2_extra = transforms.Compose(
+            [
+                GaussianBlur(p=0.1),
+                transforms.RandomSolarize(threshold=128, p=0.2),
+            ]
+        )
+
+        local_transfo_extra = GaussianBlur(p=0.5)
 
         # normalization
         self.normalize = transforms.Compose(
@@ -92,7 +92,7 @@ class DataAugmentationDINO(object):
         # self.global_transfo1 = transforms.Compose([color_jittering, global_transfo1_extra, self.normalize])
         # self.global_transfo2 = transforms.Compose([color_jittering, global_transfo2_extra, self.normalize])
         # self.local_transfo = transforms.Compose([color_jittering, local_transfo_extra, self.normalize])
-
+        #
         self.global_transfo1 = transforms.Compose([self.normalize])
         self.global_transfo2 = transforms.Compose([self.normalize])
         self.local_transfo = transforms.Compose([self.normalize])

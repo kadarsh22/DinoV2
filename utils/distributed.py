@@ -9,7 +9,7 @@ import os
 
 import torch
 import torch.distributed as dist
-import dinov2.distributed as distributed
+import dinov2.distributed as d2dist
 
 from logging import getLogger
 from torch.distributed import init_process_group
@@ -69,7 +69,28 @@ def set_seed_custom(seed: int = 32) -> None:
         print(f"Random seed set as {seed}")
 
 def ddp_setup():
-    distributed.enable(overwrite=True)
+    # torchrun case (local or non-slurm)
+    if "RANK" in os.environ and "WORLD_SIZE" in os.environ and "LOCAL_RANK" in os.environ:
+        # Provide SLURM-compatible env so dinov2.distributed can read it
+        os.environ.setdefault("SLURM_JOB_NUM_NODES", "1")
+        os.environ.setdefault("SLURM_NTASKS", os.environ["WORLD_SIZE"])
+        os.environ.setdefault("SLURM_PROCID", os.environ["RANK"])
+        os.environ.setdefault("SLURM_LOCALID", os.environ["LOCAL_RANK"])
+        os.environ.setdefault("SLURM_NODEID", "0")
+        os.environ.setdefault("SLURM_JOB_NODELIST", "localhost")
+
+        # Let dinov2 set its internal globals + init pg + set device
+        d2dist.enable(overwrite=True, set_cuda_current_device=True)
+        return
+
+    # Real SLURM job
+    if "SLURM_JOB_NUM_NODES" in os.environ:
+        d2dist.enable(overwrite=True, set_cuda_current_device=True)
+        return
+
+    # Single process
+    if torch.cuda.is_available():
+        torch.cuda.set_device(0)
 
 def is_main_process() -> bool:
     """Check if current process is the main (rank 0) process."""

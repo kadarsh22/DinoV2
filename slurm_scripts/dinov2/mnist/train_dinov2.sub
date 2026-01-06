@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=dino_ibot_0
-#SBATCH --nodes=2
+#SBATCH --job-name=dino_cmnist_train
+#SBATCH --nodes=8
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
 #SBATCH --partition=boost_usr_prod
-#SBATCH --time=00-05:00:00
+#SBATCH --time=00-06:00:00
 #SBATCH -o slurm_outputs/%x_%j.out
 #SBATCH -e slurm_outputs/%x_%j.err
 

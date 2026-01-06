@@ -6,7 +6,6 @@ import dinov2.distributed as distributed
 import wandb
 import math
 from dinov2.logging import MetricLogger
-from dinov2.eval.setup import get_autocast_dtype
 from utils.distributed import is_main_process
 from src.utils.logging import AverageMeter
 from evals.evaluator import Evaluator
@@ -131,13 +130,12 @@ class Trainer:
 
                 backbone_fsdp = self.model.student.backbone  # or self.model.teacher.backbone
                 backbone_fsdp.eval()
-                autocase_dtype = get_autocast_dtype(self.train_params)
+
                 evaluator = Evaluator(
                     backbone_fsdp,
                     self.probe_train_loader,
                     self.probe_eval_loader,
                     self.attributes,
-                    autocase_dtype,
                     self.eval_params,
                 )
                 eval_metrics = evaluator.train_and_eval_probe(self.iteration)

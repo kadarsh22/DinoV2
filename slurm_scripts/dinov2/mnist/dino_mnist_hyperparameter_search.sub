@@ -1,36 +1,61 @@
 #!/bin/bash
-#SBATCH --job-name=cmnist_lr
+#SBATCH --job-name=cmnist_teacher_temp
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --partition=boost_usr_prod
-#SBATCH --time=00-02:00:00
-#SBATCH -o slurm_outputs/lr/%x_%A_%a.out
-#SBATCH -e slurm_outputs/lr/%x_%A_%a.err
-#SBATCH --array=0-4
+#SBATCH --time=00-03:00:00
+#SBATCH -o slurm_outputs/teacher_temp/%x_%A_%a.out
+#SBATCH -e slurm_outputs/teacher_temp/%x_%A_%a.err
+#SBATCH --array=0-3
 
 set -euo pipefail
 mkdir -p slurm_outputs
 
+# -----------------------
+# Environment
+# -----------------------
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate dinov2lightly
 
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 export NCCL_DEBUG=WARN
 export WANDB_MODE=offline
+export WANDB_DIR="${SLURM_SUBMIT_DIR}/wandb"
 
-LRS=(2e-4 4e-4 8e-4 1.6e-3 3.2e-3)
-LR=${LRS[$SLURM_ARRAY_TASK_ID]}
+# -----------------------
+# Dataset / configs
+# -----------------------
+DATASET="cmnist"
+DATASET_PATH="/leonardo_work/EUHPC_D27_070/data/cmnist_lff/ijepa_data/uncorrelated/ColoredMNIST-Skewed0.9-Severity1"
+TRAIN_CFG="configs/train/cmnist/vits16.yaml"
+EVAL_CFG="configs/eval/cmnist/eval_dinov2.yaml"
+SEED=123
 
-RUN="cmnist_lr_${LR}_job${SLURM_JOB_ID}_a${SLURM_ARRAY_TASK_ID}"
+# -----------------------
+# Teacher temp sweep
+# (final_momentum_teacher fixed at 1.0)
+# -----------------------
+WARMUP_TEMPS=(0.04 0.04 0.02 0.04)
+FINAL_TEMPS=(0.07 0.10 0.10 0.05)
 
+WARMUP_T="${WARMUP_TEMPS[$SLURM_ARRAY_TASK_ID]}"
+FINAL_T="${FINAL_TEMPS[$SLURM_ARRAY_TASK_ID]}"
+
+RUN_NAME="cmnist_Tw${WARMUP_T}_Tf${FINAL_T}_job${SLURM_JOB_ID}_a${SLURM_ARRAY_TASK_ID}"
+
+# -----------------------
+# Launch
+# -----------------------
 torchrun --standalone --nproc_per_node=1 main.py \
-  --run_name "$RUN" \
-  --config-file configs/train/cmnist/vits16.yaml \
-  --eval_fname configs/eval/cmnist/eval_dinov2.yaml \
-  --dataset cmnist \
-  --dataset_path "/leonardo_work/EUHPC_D27_070/data/cmnist_lff/ijepa_data/uncorrelated/ColoredMNIST-Skewed0.9-Severity1" \
-  --seed 123 \
-  optim.base_lr="$LR"
+  --run_name "${RUN_NAME}" \
+  --config-file "${TRAIN_CFG}" \
+  --eval_fname "${EVAL_CFG}" \
+  --dataset "${DATASET}" \
+  --dataset_path "${DATASET_PATH}" \
+  --seed "${SEED}" \
+  teacher.final_momentum_teacher=1.0 \
+  teacher.warmup_teacher_temp="${WARMUP_T}" \
+  teacher.teacher_temp="${FINAL_T}"

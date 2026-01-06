@@ -1,88 +1,36 @@
 #!/bin/bash
-#SBATCH --job-name=dino_mnist_grid
-#SBATCH --nodes=4
-#SBATCH --ntasks-per-node=1
-#SBATCH --gpus-per-task=1
+#SBATCH --job-name=cmnist_lr
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --gpus=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=64G
+#SBATCH --mem=32G
 #SBATCH --partition=boost_usr_prod
-#SBATCH --time=00-01:00:00
-#SBATCH -o slurm_outputs/%x_%j_%a.out
-#SBATCH -e slurm_outputs/%x_%j_%a.err
-#SBATCH --array=0-63
+#SBATCH --time=00-02:00:00
+#SBATCH -o slurm_outputs/lr/%x_%A_%a.out
+#SBATCH -e slurm_outputs/lr/%x_%A_%a.err
+#SBATCH --array=0-4
 
 set -euo pipefail
-mkdir -p slurm_outputs || true
-
-# ---------------- GRID (reduced) ----------------
-# Removed least-likely-to-matter grid param: temp_warmup_epochs (fixed)
-TEMP_STARTS=(0.9 0.8)
-TEMP_ENDS=(0.01 0.04)
-TEMP_WARMUP=1
-
-GLOBAL_CROP_SCALES=("0.4 1.0" "0.5 1.0")
-LOCAL_CROP_SCALES=("0.05 0.4" "0.1 0.4")
-
-LRS=(0.001 0.0005)
-WARMUP_EPOCHS=(10 20)
-# ------------------------------------------------
-
-# Total combos (should be 64 with the grid above)
-TOTAL=$(( ${#TEMP_STARTS[@]} * ${#TEMP_ENDS[@]} \
-        * ${#GLOBAL_CROP_SCALES[@]} * ${#LOCAL_CROP_SCALES[@]} \
-        * ${#LRS[@]} * ${#WARMUP_EPOCHS[@]} ))
-
-IDX="${SLURM_ARRAY_TASK_ID:-0}"
-if (( IDX >= TOTAL )); then
-  echo "IDX=${IDX} out of range (TOTAL=${TOTAL}). Exiting."
-  exit 0
-fi
-
-# Map linear index -> grid indices (mixed radix)
-i="$IDX"
-widx=$(( i % ${#WARMUP_EPOCHS[@]} )); i=$(( i / ${#WARMUP_EPOCHS[@]} ))
-lridx=$(( i % ${#LRS[@]} ));        i=$(( i / ${#LRS[@]} ))
-lcidx=$(( i % ${#LOCAL_CROP_SCALES[@]} )); i=$(( i / ${#LOCAL_CROP_SCALES[@]} ))
-gcidx=$(( i % ${#GLOBAL_CROP_SCALES[@]} )); i=$(( i / ${#GLOBAL_CROP_SCALES[@]} ))
-teidx=$(( i % ${#TEMP_ENDS[@]} ));          i=$(( i / ${#TEMP_ENDS[@]} ))
-tsidx=$(( i % ${#TEMP_STARTS[@]} ))
-
-TEMP_START="${TEMP_STARTS[$tsidx]}"
-TEMP_END="${TEMP_ENDS[$teidx]}"
-GLOBAL_CROP="${GLOBAL_CROP_SCALES[$gcidx]}"   # "MIN MAX"
-LOCAL_CROP="${LOCAL_CROP_SCALES[$lcidx]}"     # "MIN MAX"
-LR="${LRS[$lridx]}"
-WARMUP="${WARMUP_EPOCHS[$widx]}"
-
-echo "Grid IDX=${IDX}/${TOTAL}"
-echo "temp_start=${TEMP_START}, temp_end=${TEMP_END}, temp_warmup_epochs=${TEMP_WARMUP}"
-echo "global_crop_scale=${GLOBAL_CROP}, local_crop_scale=${LOCAL_CROP}"
-echo "lr=${LR}, warmup_epochs=${WARMUP}"
-
-# Rendezvous setup
-MASTER_ADDR="$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n1)"
-MASTER_PORT=$((29500 + (IDX % 1000)))
-
-export LOGLEVEL=INFO
-export OMP_NUM_THREADS="$SLURM_CPUS_PER_TASK"
-export NCCL_DEBUG=WARN
-export WANDB_MODE=offline
+mkdir -p slurm_outputs
 
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate dinov2lightly
 
-srun torchrun \
-  --nnodes="$SLURM_NNODES" \
-  --node_rank="$SLURM_NODEID" \
-  --nproc_per_node=1 \
-  --rdzv_backend=c10d \
-  --rdzv_endpoint="${MASTER_ADDR}:${MASTER_PORT}" \
-  --rdzv_id="${SLURM_JOB_ID}_${IDX}" \
-  main.py \
-    --temp_start "${TEMP_START}" \
-    --temp_end "${TEMP_END}" \
-    --temp_warmup_epochs "${TEMP_WARMUP}" \
-    --global_crop_scale ${GLOBAL_CROP} \
-    --local_crop_scale ${LOCAL_CROP} \
-    --lr "${LR}" \
-    --warmup_epochs "${WARMUP}"
+export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
+export NCCL_DEBUG=WARN
+export WANDB_MODE=offline
+
+LRS=(2e-4 4e-4 8e-4 1.6e-3 3.2e-3)
+LR=${LRS[$SLURM_ARRAY_TASK_ID]}
+
+RUN="cmnist_lr_${LR}_job${SLURM_JOB_ID}_a${SLURM_ARRAY_TASK_ID}"
+
+torchrun --standalone --nproc_per_node=1 main.py \
+  --run_name "$RUN" \
+  --config-file configs/train/cmnist/vits16.yaml \
+  --eval_fname configs/eval/cmnist/eval_dinov2.yaml \
+  --dataset cmnist \
+  --dataset_path "/leonardo_work/EUHPC_D27_070/data/cmnist_lff/ijepa_data/uncorrelated/ColoredMNIST-Skewed0.9-Severity1" \
+  --seed 123 \
+  optim.base_lr="$LR"

@@ -30,6 +30,7 @@ def main(args):
     combined_config = {"train": train_params, "eval": eval_params,}
 
     if rank == 0:
+        pprint.pprint(train_params)
         pprint.pprint(eval_params)
 
     if is_main_process():
@@ -124,49 +125,6 @@ if __name__ == "__main__":
         type=str,
         default="/mnt/fast/nobackup/users/ak03476/data/verfied_cmnist/uncorrelated/ColoredMNIST-Skewed0.9-Severity1",
         help="Path to the dataset root",
-    )
-
-    # ---------------------------
-    # Temperature schedule
-    # ---------------------------
-    parser.add_argument("--temp_start", type=float, default=0.9, help="Starting temperature")
-    parser.add_argument("--temp_end", type=float, default=0.01, help="Ending temperature")
-    parser.add_argument(
-        "--temp_warmup_epochs",
-        type=int,
-        default=1,
-        help="Warmup epochs for temperature schedule",
-    )
-
-    # ---------------------------
-    # Crops
-    # ---------------------------
-    parser.add_argument(
-        "--global_crop_scale",
-        type=float,
-        nargs=2,
-        metavar=("MIN", "MAX"),
-        default=[0.4, 1.0],
-        help="Min/max scale for global crops",
-    )
-    parser.add_argument(
-        "--local_crop_scale",
-        type=float,
-        nargs=2,
-        metavar=("MIN", "MAX"),
-        default=[0.05, 0.4],
-        help="Min/max scale for local crops",
-    )
-
-    # ---------------------------
-    # Optim
-    # ---------------------------
-    parser.add_argument("--lr", type=float, default=0.0005, help="Learning rate")
-    parser.add_argument(
-        "--warmup_epochs",
-        type=int,
-        default=10,
-        help="Warmup epochs for LR schedule",
     )
 
     arguments = parser.parse_args()

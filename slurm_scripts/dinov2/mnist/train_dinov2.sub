@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=dino_cmnist
+#SBATCH --job-name=dino_ibot_0
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
@@ -43,4 +43,5 @@ srun torchrun \
     --run_name "dinov2_cmnist_baseline" \
     --dataset cmnist \
     --dataset_path "/leonardo_work/EUHPC_D27_070/data/cmnist_lff/ijepa_data/uncorrelated/ColoredMNIST-Skewed0.9-Severity1" \
-    --seed 123
+    --seed 123 \
+    optim.base_lr=2e-4 

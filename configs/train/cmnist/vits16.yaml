@@ -3,7 +3,6 @@ dino:
   head_bottleneck_dim: 128
   head_hidden_dim: 512
   head_nlayers: 3
-  # smaller head is enough
 ibot:
   separate_head: true
   head_bottleneck_dim: 128
@@ -29,12 +28,15 @@ teacher:
 optim:
   epochs: 100
   weight_decay: 0.04
-  weight_decay_end: 0.2
+  weight_decay_end: 0.4
   base_lr: 2.0e-04  # learning rate for a batch size of 1024
   warmup_epochs: 10
   layerwise_decay: 1.0
 crops:
   local_crops_size: 98
   local_crops_scale:
-    - 0.3
-    - 0.6
+    - 0.4
+    - 0.9
+  global_crops_scale:
+    - 0.8
+    - 1.0

@@ -2,6 +2,8 @@ import sys
 from torch.cuda.amp import autocast
 import logging
 from typing import Dict, List
+from functools import partial
+from dinov2.eval.utils import ModelWithIntermediateLayers
 import os
 import torch
 import torch.nn as nn
@@ -10,9 +12,12 @@ from torch.utils.data import DataLoader, TensorDataset
 from evals.eval_utils import _need_cache, _cleanup_cache_dir, _load_cached
 
 class Evaluator:
-    def __init__(self, target_encoder, probe_train_loader, probe_eval_loader, attributes, params) -> None:
+    def __init__(self, target_encoder, probe_train_loader, probe_eval_loader, attributes, autocast_dtype, params) -> None:
         self.params = params
-        self.model = target_encoder
+        n_last_blocks_list = [1, 4]
+        n_last_blocks = max(n_last_blocks_list)
+        autocast_ctx = partial(torch.cuda.amp.autocast, enabled=True, dtype=autocast_dtype)
+        self.model = ModelWithIntermediateLayers(target_encoder, n_last_blocks, autocast_ctx,)
         self.train_loader = probe_train_loader
         self.val_loader = probe_eval_loader
         self.attributes = attributes
@@ -143,7 +148,8 @@ class Evaluator:
             data = data.to(device, non_blocking=True)
             with autocast(enabled=True):
                 feats = self.model(data)  # [B,T,C] or [B,C]
-            x = feats.mean(dim=1) if feats.dim() == 3 else feats
+            # x = feats.mean(dim=1) if feats.dim() == 3 else feats
+            x = feats[-1][1]
             x_chunks.append(x.float().cpu())  # ✅ store fp32
             a_chunks.append(attr.cpu())
 

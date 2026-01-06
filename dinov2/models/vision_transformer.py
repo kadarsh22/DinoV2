@@ -426,3 +426,19 @@ def vit_giant2(patch_size=16, num_register_tokens=0, in_chans=3, channel_adaptiv
         **kwargs,
     )
     return model
+
+def vit_tiny(patch_size=16, num_register_tokens=0, in_chans=3, channel_adaptive=False, **kwargs):
+    model = DinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=192,
+        depth=12,
+        num_heads=3,
+        mlp_ratio=4,
+        block_fn=partial(Block, attn_class=MemEffAttention),
+        num_register_tokens=num_register_tokens,
+        in_chans=in_chans,
+        channel_adaptive=channel_adaptive,
+        **kwargs,
+    )
+    return model
+

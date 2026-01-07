@@ -53,7 +53,6 @@ class SSLMetaArch(nn.Module):
         self.do_dino = cfg.dino.loss_weight > 0
         self.do_koleo = cfg.dino.koleo_loss_weight > 0
         self.do_ibot = cfg.ibot.loss_weight > 0
-        self.do_lcal = cfg.lcal.loss_weight > 0
         self.ibot_separate_head = cfg.ibot.separate_head
 
         logger.info("OPTIONS -- DINO")
@@ -99,7 +98,7 @@ class SSLMetaArch(nn.Module):
                 logger.info(f"OPTIONS -- IBOT -- head_bottleneck_dim: {cfg.ibot.head_bottleneck_dim}")
                 logger.info(f"OPTIONS -- IBOT -- head_hidden_dim: {cfg.ibot.head_hidden_dim}")
                 ibot_head = partial(
-                    DINOHeadWithVerifier,
+                    DINOHead,
                     in_dim=embed_dim,
                     out_dim=cfg.ibot.head_n_prototypes,
                     hidden_dim=cfg.ibot.head_hidden_dim,
@@ -150,7 +149,6 @@ class SSLMetaArch(nn.Module):
 
         do_dino = self.do_dino
         do_ibot = self.do_ibot
-        do_lcal = self.do_lcal
 
         # loss scales
         ibot_loss_scale = 1.0 / n_global_crops
@@ -191,7 +189,7 @@ class SSLMetaArch(nn.Module):
                     out=buffer_tensor_teacher[:n_masked_patches],
                 )
                 teacher_cls_tokens_after_head = self.teacher.dino_head(teacher_cls_tokens)
-                masked_teacher_patch_tokens_after_head, feature_norm, p = self.teacher.ibot_head(buffer_tensor_teacher)[
+                masked_teacher_patch_tokens_after_head = self.teacher.ibot_head(buffer_tensor_teacher)[
                     :n_masked_patches
                 ]
             else:
@@ -347,25 +345,13 @@ class SSLMetaArch(nn.Module):
 
         return loss_dict
 
-    import torch
-
     def fsdp_synchronize_streams(self):
-        # Unwrap FSDP to get the actual module (teacher/backbone might be FSDP)
-        def unwrap(m):
-            return getattr(m, "_fsdp_wrapped_module", m)
-
-        # Pick the actual backbone modules
-        t_backbone = unwrap(self.teacher.backbone)
-        s_backbone = unwrap(self.student.backbone)
-
-        # If streams don't exist yet, create them
-        if not hasattr(t_backbone, "_streams") or t_backbone._streams is None:
-            # DINOv2 expects a tuple like (compute_stream, prefetch_stream, post_stream) or similar.
-            # We'll create 3 CUDA streams as a safe default.
-            t_backbone._streams = (torch.cuda.Stream(), torch.cuda.Stream(), torch.cuda.Stream())
-
-        # Share the same streams between teacher and student
-        s_backbone._streams = t_backbone._streams
+        if self.need_to_synchronize_fsdp_streams:
+            torch.cuda.synchronize()
+            self.student.dino_head._streams = (
+                self.teacher.dino_head._streams
+            ) = self.student.backbone._streams = self.teacher.backbone._streams
+            self.need_to_synchronize_fsdp_streams = False
 
     def update_teacher(self, m):
         student_param_list = []

@@ -62,34 +62,10 @@ def is_sharded_fsdp(x):
     return is_fsdp(x) and x.sharding_strategy is not ShardingStrategy.NO_SHARD
 
 
-def free_if_fsdp(x):
-    # Only relevant for sharded FSDP modules
-    if not is_sharded_fsdp(x):
-        return
-
-    # PyTorch FSDP internal API (yes, private) used by DINOv2 for memory freeing
-    from torch.distributed.fsdp._runtime_utils import _reshard  # type: ignore
-
-    # Torch 2.1+ uses a single handle (module._handle) instead of module._handles
-    handle = getattr(x, "_handle", None)
-    if handle is not None:
-        # Optional guard: skip if already freed
-        try:
-            unsharded = handle._get_padded_unsharded_flat_param()
-            if unsharded._typed_storage()._size() == 0:  # already freed
-                return
-        except Exception:
-            pass
-
+def free_if_fsdp(x: FSDP):
+    if is_sharded_fsdp(x) and x._has_params:
+        handle = x._handle
         _reshard(x, handle, True)
-        return
-
-    # Older torch versions: list of handles
-    handles = getattr(x, "_handles", None)
-    if handles is None:
-        return
-    true_list = [True for _ in handles]
-    _reshard(x, handles, true_list)
 
 
 def get_fsdp_modules(x):

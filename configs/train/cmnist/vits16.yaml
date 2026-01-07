@@ -10,9 +10,10 @@ ibot:
   head_n_prototypes: 1024
   head_nlayers: 3
 train:
-  batch_size_per_gpu: 128
+  batch_size_per_gpu: 1024
   dataset_path: ImageNet22k
   centering: sinkhorn_knopp
+  OFFICIAL_EPOCH_LENGTH: 50
 student:
   arch: vit_small
   patch_size: 7

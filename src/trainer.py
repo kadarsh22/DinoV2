@@ -120,7 +120,7 @@ class Trainer:
                         "train/koleo_loss": self.metric_logger.meters['koleo_loss'].avg,
                         "train/lr": self.metric_logger.meters['lr'].value,
                         "train/wd": self.metric_logger.meters['wd'].value,
-                        "iteration": self.iteration,
+                        "train/iteration": self.iteration,
                     }
                 )
 

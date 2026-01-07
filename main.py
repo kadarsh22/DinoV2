@@ -21,15 +21,13 @@ from utils.visualisation import plot_crops_from_dataset
 def main(args):
     ddp_setup()
     set_seed_custom(seed=args.seed)
-    rank = dist.get_rank()
 
     train_params = setup(args)
     train_params.train.dataset_path = args.dataset_path
-    train_params.train.OFFICIAL_EPOCH_LENGTH = 50
     eval_params = load_yaml(args.eval_fname)
     combined_config = {"train": train_params, "eval": eval_params,}
 
-    if rank == 0:
+    if is_main_process():
         pprint.pprint(train_params)
         pprint.pprint(eval_params)
 
@@ -111,7 +109,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="/leonardo_work/EUHPC_D27_070/cache/dinv2_outputs",
+        default="/mnt/fast/nobackup/scratch4weeks/ak03476/cache/dinv2_outputs",
         help="Output directory for logs/checkpoints",
     )
     parser.add_argument("--seed", type=int, default=0, help="Random seed")

@@ -108,7 +108,7 @@ class DINOHeadWithVerifier(nn.Module):
 
         v_logits = self.verifier(v_in)
 
-        return logits, v_logits, bottleneck
+        return logits, v_logits, z
 
 
 

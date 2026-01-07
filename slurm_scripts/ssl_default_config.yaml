@@ -59,10 +59,11 @@ ibot:
   head_nlayers: 3
   head_hidden_dim: 2048
 lcal:
+  mode: cosine
   loss_weight: 0.0
   tau_start: 0.5
   tau_end: 0.1
-  warmup_epochs: 10
+  warmup_iterations: 10
 train:
   batch_size_per_gpu: 64
   dataset_path: ImageNet:split=TRAIN

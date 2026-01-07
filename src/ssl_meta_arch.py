@@ -7,6 +7,7 @@ from functools import partial
 import logging
 
 import torch
+import math
 from torch import nn
 import torch.nn.functional as F
 
@@ -28,10 +29,6 @@ except ImportError:
 
 logger = logging.getLogger("dinov2")
 
-def _check(x, name):
-    assert x.ndim == 3, (name, x.shape)
-    assert x.shape[1] > 0, f"{name} has zero tokens: {x.shape}"
-    assert torch.isfinite(x).all(), f"{name} has NaN/Inf"
 
 class SSLMetaArch(nn.Module):
     def __init__(self, cfg):
@@ -136,7 +133,7 @@ class SSLMetaArch(nn.Module):
         else:
             loss.backward()
 
-    def forward_backward(self, images, teacher_temp):
+    def forward_backward(self, images, teacher_temp, tau):
         n_global_crops = 2
         assert n_global_crops == 2
         n_local_crops = self.cfg.crops.local_crops_number
@@ -253,9 +250,6 @@ class SSLMetaArch(nn.Module):
         student_global_cls_tokens = student_global_backbone_output_dict["x_norm_clstoken"]
         inputs_for_student_head_list.append(student_global_cls_tokens.unsqueeze(0))
 
-        # for i, t in enumerate(inputs_for_student_head_list):
-        #     _check(t, f"inputs_for_student_head_list[{i}]")
-
         # 1c: global crops patch tokens
         if do_ibot:
             _dim = student_global_backbone_output_dict["x_norm_clstoken"].shape[-1]
@@ -331,9 +325,6 @@ class SSLMetaArch(nn.Module):
 
         if do_ibot:
             # compute loss
-            dist = F.smooth_l1_loss(feature_unnorm_student, feature_unnorm_teacher, reduction='none').mean(dim=-1)
-            with torch.no_grad():
-                correct = (dist < 0.5).to(v_logits.dtype)  # [B, N_mask]
             ibot_patch_loss = (
                 self.ibot_patch_loss.forward_masked(
                     student_global_masked_patch_tokens_after_head,
@@ -352,14 +343,23 @@ class SSLMetaArch(nn.Module):
             # accumulate loss
             loss_accumulator += self.ibot_loss_weight * ibot_patch_loss
 
-        if True:
-            dist = F.smooth_l1_loss(feature_unnorm_student, feature_unnorm_teacher, reduction="none").mean(dim=-1)
+        if self.do_lcal:
+            M = n_masked_patches
+            student_logits = student_global_masked_patch_tokens_after_head[:M]  # [M,K]
+            teacher_probs = masked_teacher_ibot_softmaxed_centered[:M]  # [M,K]
+
             with torch.no_grad():
-                correct = (dist < 0.2).to(v_logits.dtype)  # [B, N_mask]
-            correct = correct.to(v_logits.dtype).unsqueeze(-1)  # [281, 1]
-            lcal = torch.nn.functional.binary_cross_entropy_with_logits(v_logits, correct.detach(), reduction='mean')
+
+                logp = F.log_softmax(student_logits / self.ibot_patch_loss.student_temp, dim=-1)  # [M,K]
+                dist = -(teacher_probs * logp).sum(dim=-1)  # [M]  (lower = better, higher = weirder)
+                dist = (dist / math.log(256)).clamp(0, 1)   # 0 good, 1 bad-ish
+                correct = (dist < tau).to(dtype=v_logits.dtype).unsqueeze(-1)  # [M,1]
+
+            # BCE-with-logits (targets must match shape [M,1])
+            lcal = 0*F.binary_cross_entropy_with_logits(v_logits[:n_masked_patches], correct, reduction="mean")
 
             loss_dict["L_cal"] = lcal
+            loss_dict["dist"] = dist.mean()
 
             loss_accumulator += self.lcal_loss_weight * lcal
 

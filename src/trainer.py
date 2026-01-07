@@ -9,6 +9,7 @@ from dinov2.logging import MetricLogger
 from utils.distributed import is_main_process
 from src.utils.logging import AverageMeter
 from evals.evaluator import Evaluator
+from models.tau_scheduler import TauFixedIterScheduler, TauFixedIterConfig
 
 
 class Trainer:
@@ -21,6 +22,17 @@ class Trainer:
         self.epochs_run = 0
         self.model = model
         self.fp16_scaler = fp16_scaler
+
+        OFFICIAL_EPOCH_LENGTH = train_params.train.OFFICIAL_EPOCH_LENGTH
+        self.max_iter = train_params.optim.epochs * OFFICIAL_EPOCH_LENGTH
+
+        self.tau_sched = TauFixedIterScheduler(TauFixedIterConfig(
+                                                    mode=self.train_params.lcal.mode,
+                                                    tau_start=self.train_params.lcal.tau_start,
+                                                    tau_end=self.train_params.lcal.tau_end,
+                                                    total_iters=self.max_iter,
+                                                    warmup_iters=self.train_params.lcal.warmup_iterations,
+                                                ))
 
         self.unsupervised_loader = unsupervised_loader
         self.unsupervised_sampler = unsupervised_sampler
@@ -64,12 +76,13 @@ class Trainer:
             mom = self.momentum_schedule[self.iteration]
             teacher_temp = self.teacher_temp_schedule[self.iteration]
             last_layer_lr = self.last_layer_lr_schedule[self.iteration]
+            tau = self.tau_sched.tau(self.iteration)
             self.apply_optim_scheduler(lr, wd, last_layer_lr)
 
             # compute losses
 
             self.optimizer.zero_grad(set_to_none=True)
-            loss_dict = self.model.forward_backward(data, teacher_temp=teacher_temp)
+            loss_dict = self.model.forward_backward(data, teacher_temp=teacher_temp, tau=tau)
 
             # clip gradients
 
@@ -105,6 +118,7 @@ class Trainer:
             self.metric_logger.update(lr=lr)
             self.metric_logger.update(wd=wd)
             self.metric_logger.update(mom=mom)
+            self.metric_logger.update(tau=tau)
             self.metric_logger.update(last_layer_lr=last_layer_lr)
             self.metric_logger.update(current_batch_size=current_batch_size)
             self.metric_logger.update(total_loss=losses_reduced, **loss_dict_reduced)
@@ -118,6 +132,9 @@ class Trainer:
                         "train/dino_local_crop_loss": self.metric_logger.meters['dino_local_crops_loss'].avg,
                         "train/ibot_loss": self.metric_logger.meters['ibot_loss'].avg,
                         "train/koleo_loss": self.metric_logger.meters['koleo_loss'].avg,
+                        "train/l_cal": self.metric_logger.meters['L_cal'].avg,
+                        "train/dist": self.metric_logger.meters['dist'].avg,
+                        "train/tau": self.metric_logger.meters['tau'].value,
                         "train/lr": self.metric_logger.meters['lr'].value,
                         "train/wd": self.metric_logger.meters['wd'].value,
                         "train/iteration": self.iteration,

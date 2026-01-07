@@ -8,10 +8,11 @@ import logging
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from dinov2.loss import DINOLoss, iBOTPatchLoss, KoLeoLoss
 from dinov2.models import build_model_from_cfg
-from dinov2.layers import DINOHead
+from dinov2.layers import DINOHead, IBOTVerifier
 from dinov2.utils.utils import has_batchnorms
 from dinov2.utils.param_groups import get_params_groups_with_decay, fuse_params_groups
 from dinov2.fsdp import get_fsdp_wrapper, ShardedGradScaler, get_fsdp_modules, reshard_fsdp_model
@@ -53,6 +54,8 @@ class SSLMetaArch(nn.Module):
         self.do_dino = cfg.dino.loss_weight > 0
         self.do_koleo = cfg.dino.koleo_loss_weight > 0
         self.do_ibot = cfg.ibot.loss_weight > 0
+        self.do_lcal = cfg.lcal.loss_weight > 0
+        self.lcal_loss_weight = cfg.lcal.loss_weight
         self.ibot_separate_head = cfg.ibot.separate_head
 
         logger.info("OPTIONS -- DINO")
@@ -107,6 +110,7 @@ class SSLMetaArch(nn.Module):
                 )
                 student_model_dict["ibot_head"] = ibot_head()
                 teacher_model_dict["ibot_head"] = ibot_head()
+                student_model_dict["ibot_verifier"] = IBOTVerifier(bottleneck_dim=cfg.ibot.head_bottleneck_dim)
             else:
                 logger.info("OPTIONS -- IBOT -- head shared with DINO")
 
@@ -188,8 +192,8 @@ class SSLMetaArch(nn.Module):
                     index=mask_indices_list,
                     out=buffer_tensor_teacher[:n_masked_patches],
                 )
-                teacher_cls_tokens_after_head = self.teacher.dino_head(teacher_cls_tokens)
-                masked_teacher_patch_tokens_after_head = self.teacher.ibot_head(buffer_tensor_teacher)[
+                teacher_cls_tokens_after_head, _ = self.teacher.dino_head(teacher_cls_tokens)
+                masked_teacher_patch_tokens_after_head, feature_unnorm_teacher = self.teacher.ibot_head(buffer_tensor_teacher)[
                     :n_masked_patches
                 ]
             else:
@@ -224,9 +228,9 @@ class SSLMetaArch(nn.Module):
             else:
                 raise NotImplementedError
 
-            return teacher_dino_softmaxed_centered_list, masked_teacher_ibot_softmaxed_centered
+            return teacher_dino_softmaxed_centered_list, masked_teacher_ibot_softmaxed_centered , feature_unnorm_teacher
 
-        teacher_dino_softmaxed_centered_list, masked_teacher_ibot_softmaxed_centered = get_teacher_output()
+        teacher_dino_softmaxed_centered_list, masked_teacher_ibot_softmaxed_centered, feature_unnorm_teacher = get_teacher_output()
         reshard_fsdp_model(self.teacher)
 
         loss_dict = {}
@@ -257,13 +261,14 @@ class SSLMetaArch(nn.Module):
             if not self.ibot_separate_head:
                 inputs_for_student_head_list.append(buffer_tensor_patch_tokens.unsqueeze(0))
             else:
-                student_global_masked_patch_tokens_after_head = self.student.ibot_head(buffer_tensor_patch_tokens)[
+                student_global_masked_patch_tokens_after_head, feature_unnorm_student = self.student.ibot_head(buffer_tensor_patch_tokens)[
                     :n_masked_patches
                 ]
+                p = self.student.ibot_verifier(feature_unnorm_student)
 
-        # 2: run
+                # 2: run
         _attn_bias, cat_inputs = fmha.BlockDiagonalMask.from_tensor_list(inputs_for_student_head_list)
-        outputs_list = _attn_bias.split(self.student.dino_head(cat_inputs))
+        outputs_list = _attn_bias.split(self.student.dino_head(cat_inputs)[0])
 
         # 3a: local crops cls tokens
         student_local_cls_tokens_after_head = outputs_list.pop(0).squeeze(0)
@@ -339,11 +344,25 @@ class SSLMetaArch(nn.Module):
             # accumulate loss
             loss_accumulator += self.ibot_loss_weight * ibot_patch_loss
 
+        if True:
+            dist = F.smooth_l1_loss(feature_unnorm_student, feature_unnorm_teacher, reduction="none").mean(dim=-1)
+            with torch.no_grad():
+
+                correct = (dist < 0.2).to(p.dtype)  # [B, N_mask]
+
+            lcal = torch.nn.functional.binary_cross_entropy(p, correct.view(-1,1), reduction='mean')
+
+            loss_dict["L_cal"] = lcal
+
+            loss_accumulator += self.lcal_loss_weight * lcal
+
         self.backprop_loss(loss_accumulator)
 
         self.fsdp_synchronize_streams()
 
         return loss_dict
+
+
 
     import torch
 
@@ -370,9 +389,19 @@ class SSLMetaArch(nn.Module):
         teacher_param_list = []
         with torch.no_grad():
             for k in self.student.keys():
-                for ms, mt in zip(get_fsdp_modules(self.student[k]), get_fsdp_modules(self.teacher[k])):
+                if k not in self.teacher:
+                    continue  # skip student-only modules like ibot_verifier
+
+                sms = list(get_fsdp_modules(self.student[k]))
+                tms = list(get_fsdp_modules(self.teacher[k]))
+                assert len(sms) == len(tms), (
+                    f"FSDP module mismatch for key {k}: {len(sms)} vs {len(tms)}"
+                )
+
+                for ms, mt in zip(sms, tms):
                     student_param_list += ms.params
                     teacher_param_list += mt.params
+
             torch._foreach_mul_(teacher_param_list, m)
             torch._foreach_add_(teacher_param_list, student_param_list, alpha=1 - m)
 
@@ -405,8 +434,10 @@ class SSLMetaArch(nn.Module):
             raise NotImplementedError
         # below will synchronize all student subnetworks across gpus:
         for k, v in self.student.items():
-            self.teacher[k].load_state_dict(self.student[k].state_dict())
+            if k in self.teacher:
+                self.teacher[k].load_state_dict(self.student[k].state_dict())
             student_model_cfg = self.cfg.compute_precision.student[k]
             self.student[k] = get_fsdp_wrapper(student_model_cfg, modules_to_wrap={BlockChunk})(self.student[k])
-            teacher_model_cfg = self.cfg.compute_precision.teacher[k]
-            self.teacher[k] = get_fsdp_wrapper(teacher_model_cfg, modules_to_wrap={BlockChunk})(self.teacher[k])
+            if k in self.teacher:
+                teacher_model_cfg = self.cfg.compute_precision.teacher[k]
+                self.teacher[k] = get_fsdp_wrapper(teacher_model_cfg, modules_to_wrap={BlockChunk})(self.teacher[k])

@@ -10,7 +10,7 @@ ibot:
   head_n_prototypes: 1024
   head_nlayers: 3
 train:
-  batch_size_per_gpu: 1024
+  batch_size_per_gpu: 64
   dataset_path: ImageNet22k
   centering: sinkhorn_knopp
   OFFICIAL_EPOCH_LENGTH: 50
@@ -29,7 +29,7 @@ teacher:
 optim:
   epochs: 100
   weight_decay: 0.04
-  weight_decay_end: 0.4
+  weight_decay_end: 0.06
   base_lr: 2e-5 # learning rate for a batch size of 1024
   warmup_epochs: 10
 crops:

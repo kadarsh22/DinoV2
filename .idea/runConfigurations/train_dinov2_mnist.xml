@@ -5,7 +5,12 @@
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>
+      <env name="CUDA_LAUNCH_BLOCKING" value="1" />
+      <env name="TORCH_NCCL_ASYNC_ERROR_HANDLING" value="0" />
       <env name="PYTHONUNBUFFERED" value="1" />
+      <env name="TORCH_USE_CUDA_DSA" value="1" />
+      <env name="XFORMERS_DISABLE_FLASH_ATTN" value="1" />
+      <env name="XFORMERS_FORCE_DISABLE_FLASH_ATTN" value="1" />
     </envs>
     <option name="SDK_HOME" value="" />
     <option name="SDK_NAME" value="dinov2" />

@@ -7,9 +7,9 @@
 #SBATCH --mem=64G
 #SBATCH --partition=3090,3090_risk
 #SBATCH --time=24:00:00
-#SBATCH --array=0-1
-#SBATCH -o slurm_outputs/%x_%A_%a.out
-#SBATCH -e slurm_outputs/%x_%A_%a.err
+#SBATCH --array=0-124
+#SBATCH -o slurm_outputs/hp_search/%x_%A_%a.out
+#SBATCH -e slurm_outputs/hp_search/%x_%A_%a.err
 
 set -euo pipefail
 mkdir -p slurm_outputs
@@ -17,9 +17,9 @@ mkdir -p slurm_outputs
 # -----------------------------
 # Hyperparameter grid
 # -----------------------------
-TAU_START_LIST=(0.20)
-TAU_END_LIST=(0.60 0.70 )
-WARMUP_ITERS_LIST=(0 2000)
+TAU_START_LIST=(6.8 6.5 6.3 7.0 7.5)
+TAU_END_LIST=(4.8 3.8 2.8 3.0 2.0)
+WARMUP_ITERS_LIST=(100 200 300 400 500)
 
 # Total combos
 NS=${#TAU_START_LIST[@]}
@@ -47,13 +47,13 @@ WARMUP_ITERS=${WARMUP_ITERS_LIST[$k]}
 RUN_NAME="dinov2_cmnist_ours_hp_tauS${TAU_START}_tauE${TAU_END}_wu${WARMUP_ITERS}"
 
 echo "=== Trial ${tid}/${TOTAL} ==="
-echo "tau_start=${TAU_START} tau_end=${TAU_END} warmup_iters=${WARMUP_ITERS} seed=${SEED}"
+echo "tau_start=${TAU_START} tau_end=${TAU_END} warmup_iters=${WARMUP_ITERS}"
 echo "run_name=${RUN_NAME}"
-
+cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
 # -----------------------------
 # Launch (single-node torchrun)
 # -----------------------------
-srun torchrun --standalone --nproc_per_node=1 main.py \
+srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --standalone --nproc_per_node=1 main.py \
   --run_name "${RUN_NAME}" \
   opts.lcal.tau_start="${TAU_START}" \
   opts.lcal.tau_end="${TAU_END}" \

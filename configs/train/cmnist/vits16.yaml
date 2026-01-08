@@ -9,8 +9,13 @@ ibot:
   head_hidden_dim: 768                # smaller head is enough
   head_n_prototypes: 1024
   head_nlayers: 3
+lcal:
+  loss_weight: 0.0
+  tau_start: 0.5
+  tau_end: 0.1
+  warmup_epochs: 10
 train:
-  batch_size_per_gpu: 64
+  batch_size_per_gpu: 1024
   dataset_path: ImageNet22k
   centering: sinkhorn_knopp
   OFFICIAL_EPOCH_LENGTH: 50

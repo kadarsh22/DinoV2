@@ -153,6 +153,7 @@ class SSLMetaArch(nn.Module):
 
         do_dino = self.do_dino
         do_ibot = self.do_ibot
+        do_lcal = self.do_lcal
 
         # loss scales
         ibot_loss_scale = 1.0 / n_global_crops
@@ -344,7 +345,7 @@ class SSLMetaArch(nn.Module):
             # accumulate loss
             loss_accumulator += self.ibot_loss_weight * ibot_patch_loss
 
-        if True:
+        if do_lcal:
             dist = F.smooth_l1_loss(feature_unnorm_student, feature_unnorm_teacher, reduction="none").mean(dim=-1)
             with torch.no_grad():
 

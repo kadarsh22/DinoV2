@@ -1,0 +1,27 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="train_dinov2_shapes3d" type="PythonConfigurationType" factoryName="Python" singleton="false">
+    <module name="DinoV2" />
+    <option name="ENV_FILES" value="" />
+    <option name="INTERPRETER_OPTIONS" value="" />
+    <option name="PARENT_ENVS" value="true" />
+    <envs>
+      <env name="PYTHONUNBUFFERED" value="1" />
+    </envs>
+    <option name="SDK_HOME" value="" />
+    <option name="SDK_NAME" value="dinov2" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="IS_MODULE_SDK" value="false" />
+    <option name="ADD_CONTENT_ROOTS" value="true" />
+    <option name="ADD_SOURCE_ROOTS" value="true" />
+    <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+    <option name="RUN_TOOL" value="" />
+    <option name="SCRIPT_NAME" value="$USER_HOME$/miniconda3/envs/dinov2/bin/torchrun" />
+    <option name="PARAMETERS" value="--standalone --nnodes=1 --nproc_per_node=1 main.py --run_name shapes3d_baseline --config_file configs/train/3dshapes/vits16.yaml --dataset 3dshapes --eval_fname configs/eval/shapes3d/eval_dinov2.yaml --output_dir $PROJECT_DIR$/../../../../scratch4weeks/ak03476/dinov2_outputs/shapes3d --dataset_path $USER_HOME$/data/3dshapes/shapes3d.npz" />
+    <option name="SHOW_COMMAND_LINE" value="false" />
+    <option name="EMULATE_TERMINAL" value="false" />
+    <option name="MODULE_MODE" value="false" />
+    <option name="REDIRECT_INPUT" value="false" />
+    <option name="INPUT_FILE" value="" />
+    <method v="2" />
+  </configuration>
+</component>

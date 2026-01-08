@@ -1,0 +1,24 @@
+tag: dinov2_shapes3d_linear_probe
+
+meta:
+  method_name: dinov2
+#  cache_dir: /vol/research/project_storage/cache
+  eval_every: 500
+  log_every: 50
+#  cache_dir: /leonardo_work/EUHPC_D27_070/cache
+  cache_dir: /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/cache
+
+trainer:
+  max_epochs: 100
+  num_workers: 4
+
+probe:
+  epochs: 100
+  lr: 0.005
+  weight_decay: 0.0001
+  log_prefix: multi_attribute_linear_probe
+  target_key: label
+  log_top5: false
+  batch_size: 256
+  use_best_checkpoint: true
+

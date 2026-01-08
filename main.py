@@ -88,7 +88,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--config-file",
+        "--config_file",
         default="configs/train/cmnist/vits16.yaml",
         metavar="FILE",
         help="Path to training config file",

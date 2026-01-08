@@ -1,12 +1,15 @@
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Union
 import torch
 import torchvision
-from torch.utils.data import Dataset, DataLoader
+import torchvision.transforms as T
 from functools import partial
+from torch.utils.data import Subset
+
+from torchvision.datasets import CIFAR10, MNIST, CelebA
 from torchvision.transforms import (
     Compose, Resize, CenterCrop, ToTensor, Normalize, Lambda
 )
-import torch.distributed as dist
+from data.datasets.shapes3d import Shapes3d
 from torch.utils.data import DistributedSampler, DataLoader
 from torch.utils.data import random_split
 from data.attributes import AttributeSpec
@@ -17,7 +20,11 @@ from data.collate import collate_data_and_cast
 from utils.attribute_dataset import AttributeDataset
 
 
-def _infer_dataset(dataset, cfg: Dict[str, Any]) -> Tuple[Dataset, Dataset, int, Any]:
+def _infer_dataset(dataset, cfg: Dict[str, Any]) -> Union[
+    None, tuple[Subset[Any], Subset[Any], int, list[AttributeSpec], dict[str, list[float]]], tuple[
+        AttributeDataset, AttributeDataset, int, list[AttributeSpec], dict[str, list[float]]], tuple[
+        CIFAR10, CIFAR10, int, bool], tuple[CelebA, CelebA, int, list[AttributeSpec], dict[str, list[float]]], tuple[
+        MNIST, MNIST, int, list[AttributeSpec]]]:
     """
     Returns (train_dataset, val_dataset, num_classes, attributes)
     """
@@ -38,9 +45,62 @@ def _infer_dataset(dataset, cfg: Dict[str, Any]) -> Tuple[Dataset, Dataset, int,
                                                                                      index=1)]
         return train, val, 10, attributes, normalisation_params
 
+    if dataset in {'3dshapes'}:
+
+        normalisation_params = {'mean': [0.5, 0.5, 0.5], 'std': [0.5, 0.5, 0.5]}
+
+        transform_probe = Compose([
+            Resize(cfg.crops.global_crops_size, antialias=True),
+            CenterCrop(cfg.crops.global_crops_size),
+            ToTensor(),
+            Normalize(mean=normalisation_params["mean"], std=normalisation_params["std"]),
+        ])
+
+        transform_train = None
+
+        dataset_train = Shapes3d(cfg.train.dataset_path, transform=transform_train)
+        dataset_val = Shapes3d(cfg.train.dataset_path, transform=transform_probe)
+
+        N = len(dataset_train)
+        train_size = int(0.8 * N)
+
+        g = torch.Generator().manual_seed(0)
+        perm = torch.randperm(N, generator=g)
+
+        train_idx = perm[:train_size].tolist()
+        val_idx = perm[train_size:].tolist()
+
+        train = Subset(dataset_train, train_idx)
+        val = Subset(dataset_val, val_idx)
+
+        attributes = [
+            AttributeSpec("floor_hue", num_classes=10, index=0),
+            AttributeSpec("wall_hue", num_classes=10, index=1),
+            AttributeSpec("object_hue", num_classes=10, index=2),
+            AttributeSpec("scale", num_classes=8, index=3),
+            AttributeSpec("shape", num_classes=4, index=4),
+            AttributeSpec("orientation", num_classes=15, index=5),
+        ]
+
+        return train, val, 10, attributes, normalisation_params
+
+
+    if dataset in {'CelebA'}:
+        normalisation_params = {'mean': [0.5, 0.5, 0.5], 'std': [0.5, 0.5, 0.5]}
+        transform_probe = T.Compose([T.Resize(cfg.crops.global_crops_size), T.CenterCrop(cfg.crops.global_crops_size), T.ToTensor(),
+                                     T.Normalize(mean=normalisation_params['mean'], std=normalisation_params['std']),])
+        target_transform = lambda attr: ((attr + 1) // 2).to(torch.uint8)  # 0/1
+
+        train = CelebA(root=cfg.train.dataset_path, split="train", target_type="attr", download=False)
+        val = CelebA(root=cfg.train.dataset_path, split="test", target_type="attr", download=False, transform=transform_probe,
+                     target_transform=target_transform)
+
+        attributes = [AttributeSpec(name=str(a), num_classes=2, index=i)
+            for i, a in enumerate(val.attr_names)]
+        return train, val, 2, attributes, normalisation_params
+
     if dataset in {"mnist"}:
 
-        img_size = 224
         transform_probe = Compose([Resize(img_size), CenterCrop(img_size), ToTensor(),
                                    Lambda(lambda x: x.repeat(3, 1, 1) if x.shape[0] == 1 else x),
                                    Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))])
@@ -83,8 +143,12 @@ def build_dataloaders(dataset, train_params, eval_params):
         local_crops_size=train_params.crops.local_crops_size,
     )
 
-    setattr(train_dataset, "transform", data_transform)
-    setattr(train_dataset, "target_transform", lambda _: ())
+    if isinstance(train_dataset, Subset):
+        train_dataset.dataset.transform = data_transform
+        train_dataset.dataset.target_transform = lambda _: ()
+    else:
+        train_dataset.transform = data_transform
+        train_dataset.target_transform = lambda _: ()
 
     collate_fn = partial(
         collate_data_and_cast,

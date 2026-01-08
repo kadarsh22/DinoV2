@@ -120,15 +120,26 @@ class Evaluator:
             dist.barrier()
 
         metrics: Dict[str, float] = {}
+        acc_sum = 0.0
+        n_attr = 0
+
         for spec in self.attributes:
             name = spec.name
             denom = max(1, counts[name])
             correct = correct1[name]
-            accuracy = (correct / denom) * 100
-            metrics[f"eval/eval_{spec.name}_top1"] = accuracy
-            print( f"epoch {epoch:02d} | {name:<20} " f"top1 {accuracy:6.2f}%  ({correct:>5}/{denom:<5})" )
-            if self.params['probe']['log_top5']:
-                metrics[f"eval/eval_{spec.name}_top5"] = (correct5[spec.name] / denom)*100
+            accuracy = (correct / denom) * 100.0
+
+            metrics[f"eval/eval_{name}_top1"] = accuracy
+            print(f"epoch {epoch:02d} | {name:<20} top1 {accuracy:6.2f}%  ({correct:>5}/{denom:<5})")
+
+            acc_sum += accuracy
+            n_attr += 1
+
+        avg_acc = acc_sum / max(1, n_attr)
+        metrics["eval/eval_attr_avg_top1"] = avg_acc
+        print(f"epoch {epoch:02d} | {'avg':<20} top1 {avg_acc:6.2f}%")
+        if self.params['probe']['log_top5']:
+            metrics[f"eval/eval_{spec.name}_top5"] = (correct5[spec.name] / denom)*100
 
         return metrics
 

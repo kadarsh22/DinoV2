@@ -94,7 +94,8 @@ def _infer_dataset(dataset, cfg: Dict[str, Any]) -> Union[
         train = CelebA(root=cfg.train.dataset_path, split="train", target_type="attr", download=False)
         val = CelebA(root=cfg.train.dataset_path, split="test", target_type="attr", download=False, transform=transform_probe,
                      target_transform=target_transform)
-
+        train.attr_names = train.attr_names[:40]
+        val.attr_names = train.attr_names[:40]
         attributes = [AttributeSpec(name=str(a), num_classes=2, index=i)
             for i, a in enumerate(val.attr_names)]
         return train, val, 2, attributes, normalisation_params
@@ -115,7 +116,7 @@ def build_dataloaders(dataset, train_params, eval_params):
     train_dataset, val_dataset, num_classes, attributes, normalisation_params = _infer_dataset(dataset, train_params)
 
     train_size = int(0.8 * len(val_dataset))
-    test_size = int(0.2 * len(val_dataset))
+    test_size = len(val_dataset) - train_size
 
     g = torch.Generator().manual_seed(0)
     probe_train_dataset, probe_test_dataset = random_split(val_dataset, [train_size, test_size],  generator=g)

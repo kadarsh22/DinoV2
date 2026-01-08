@@ -21,7 +21,7 @@ train:
   OFFICIAL_EPOCH_LENGTH: 50
 student:
   arch: vit_small
-  patch_size: 7
+  patch_size: 14
   drop_path_rate: 0.0
   ffn_layer: mlp
   block_chunks: 0
@@ -32,16 +32,16 @@ teacher:
   teacher_temp: 0.05
   warmup_teacher_temp_epochs: 10       # shorter warmup for small dataset
 optim:
-  epochs: 100
+  epochs: 1000
   weight_decay: 0.04
   weight_decay_end: 0.06
   base_lr: 2e-5 # learning rate for a batch size of 1024
   warmup_epochs: 10
 crops:
   global_crops_scale:
-  - 0.4
+  - 0.7
   - 1.0
-  local_crops_number: 8
+  local_crops_number: 4
   local_crops_scale:
   - 0.15
   - 0.4

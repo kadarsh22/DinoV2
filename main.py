@@ -108,7 +108,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="/scratch/ak03476/cache/dinv2_outputs",
+        default="/mnt/fast/nobackup/scratch4weeks/ak03476/dinv2_outputs",
         help="Output directory for logs/checkpoints",
     )
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
@@ -120,7 +120,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset_path",
         type=str,
-        default="/scratch/ak03476/cmnist_lff/ijepa_data/uncorrelated/ColoredMNIST-Skewed0.9-Severity1",
+        default="/mnt/fast/nobackup/users/ak03476/data/verfied_cmnist/uncorrelated/ColoredMNIST-Skewed0.9-Severity1",
         help="Path to the dataset root",
     )
 

@@ -1,20 +1,12 @@
-tag: dinov2_mnist_linear_probe
+tag: dinov2_cmnist_linear_probe
 
 meta:
   method_name: dinov2
 #  cache_dir: /vol/research/project_storage/cache
-  eval_every: 200
+  eval_every: 2000
   log_every: 50
 #  cache_dir: /leonardo_work/EUHPC_D27_070/cache
-  cache_dir: /mnt/fast/nobackup/scratch4weeks/ak03476/cache
-
-data:
-  dataset: mnist
-  root: /scratch/ak03476/MNIST
-#  root: /leonardo_work/EUHPC_D27_070/data/MNIST
-#  root: /mnt/fast/nobackup/users/ak03476/data/MNIST/MNIST
-  batch_size: 64
-  num_workers: 4
+  cache_dir: /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/cache
 
 trainer:
   max_epochs: 100

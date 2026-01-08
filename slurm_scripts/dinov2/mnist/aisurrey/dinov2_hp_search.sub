@@ -53,10 +53,7 @@ echo "run_name=${RUN_NAME}"
 # -----------------------------
 # Launch (single-node torchrun)
 # -----------------------------
-srun torchrun \
-  --standalone \
-  --nproc_per_node=1 \
-  main.py \
+srun torchrun --standalone --nproc_per_node=1 main.py \
   --run_name "${RUN_NAME}" \
   opts.lcal.tau_start="${TAU_START}" \
   opts.lcal.tau_end="${TAU_END}" \

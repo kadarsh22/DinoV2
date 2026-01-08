@@ -1,0 +1,63 @@
+#!/bin/bash
+#SBATCH --job-name=dino_cmnist_hp
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-task=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64G
+#SBATCH --partition=3090,3090_risk
+#SBATCH --time=24:00:00
+#SBATCH --array=0-1
+#SBATCH -o slurm_outputs/%x_%A_%a.out
+#SBATCH -e slurm_outputs/%x_%A_%a.err
+
+set -euo pipefail
+mkdir -p slurm_outputs
+
+# -----------------------------
+# Hyperparameter grid
+# -----------------------------
+TAU_START_LIST=(0.20)
+TAU_END_LIST=(0.60 0.70 )
+WARMUP_ITERS_LIST=(0 2000)
+
+# Total combos
+NS=${#TAU_START_LIST[@]}
+NE=${#TAU_END_LIST[@]}
+NW=${#WARMUP_ITERS_LIST[@]}
+TOTAL=$((NS * NE * NW))
+
+# Guard: array size must match TOTAL
+if [[ "${SLURM_ARRAY_TASK_ID}" -ge "${TOTAL}" ]]; then
+  echo "SLURM_ARRAY_TASK_ID=${SLURM_ARRAY_TASK_ID} >= TOTAL=${TOTAL} (grid size). Exiting."
+  exit 1
+fi
+
+# Map array index -> (i,j,k)
+tid=${SLURM_ARRAY_TASK_ID}
+i=$(( tid % NS ))
+j=$(( (tid / NS) % NE ))
+k=$(( tid / (NS * NE) ))
+
+TAU_START=${TAU_START_LIST[$i]}
+TAU_END=${TAU_END_LIST[$j]}
+WARMUP_ITERS=${WARMUP_ITERS_LIST[$k]}
+
+
+RUN_NAME="dinov2_cmnist_ours_hp_tauS${TAU_START}_tauE${TAU_END}_wu${WARMUP_ITERS}"
+
+echo "=== Trial ${tid}/${TOTAL} ==="
+echo "tau_start=${TAU_START} tau_end=${TAU_END} warmup_iters=${WARMUP_ITERS} seed=${SEED}"
+echo "run_name=${RUN_NAME}"
+
+# -----------------------------
+# Launch (single-node torchrun)
+# -----------------------------
+srun torchrun \
+  --standalone \
+  --nproc_per_node=1 \
+  main.py \
+  --run_name "${RUN_NAME}" \
+  opts.lcal.tau_start="${TAU_START}" \
+  opts.lcal.tau_end="${TAU_END}" \
+  opts.lcal.warmup_iterations="${WARMUP_ITERS}"

@@ -12,8 +12,8 @@ ibot:
 lcal:
   mode: cosine
   loss_weight: 1.0
-  tau_start: 1.0
-  tau_end: 0.1
+  tau_start: 6.6
+  tau_end: 3
   warmup_iterations: 100
 train:
   batch_size_per_gpu: 64

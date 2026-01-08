@@ -5,23 +5,18 @@
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>
-      <env name="CUDA_LAUNCH_BLOCKING" value="1" />
-      <env name="TORCH_NCCL_ASYNC_ERROR_HANDLING" value="0" />
       <env name="PYTHONUNBUFFERED" value="1" />
-      <env name="TORCH_USE_CUDA_DSA" value="1" />
-      <env name="XFORMERS_DISABLE_FLASH_ATTN" value="1" />
-      <env name="XFORMERS_FORCE_DISABLE_FLASH_ATTN" value="1" />
     </envs>
     <option name="SDK_HOME" value="" />
-    <option name="SDK_NAME" value="dinov2" />
+    <option name="SDK_NAME" value="dinov2_working" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <option name="IS_MODULE_SDK" value="false" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="RUN_TOOL" value="" />
-    <option name="SCRIPT_NAME" value="$USER_HOME$/miniconda3/envs/dinov2/bin/torchrun" />
-    <option name="PARAMETERS" value="--standalone --nnodes=1 --nproc_per_node=2 main.py" />
+    <option name="SCRIPT_NAME" value="/vol/research/project_storage/miniconda3/envs/dinov2_working/bin/torchrun" />
+    <option name="PARAMETERS" value="--standalone --nnodes=1 --nproc_per_node=1 main.py" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

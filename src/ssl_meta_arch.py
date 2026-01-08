@@ -352,11 +352,11 @@ class SSLMetaArch(nn.Module):
 
                 logp = F.log_softmax(student_logits / self.ibot_patch_loss.student_temp, dim=-1)  # [M,K]
                 dist = -(teacher_probs * logp).sum(dim=-1)  # [M]  (lower = better, higher = weirder)
-                dist = (dist / math.log(256)).clamp(0, 1)   # 0 good, 1 bad-ish
+                # dist = (dist / math.log(256)).clamp(0, 1)   # 0 good, 1 bad-ish
                 correct = (dist < tau).to(dtype=v_logits.dtype).unsqueeze(-1)  # [M,1]
 
             # BCE-with-logits (targets must match shape [M,1])
-            lcal = 0*F.binary_cross_entropy_with_logits(v_logits[:n_masked_patches], correct, reduction="mean")
+            lcal = self.cfg.lcal.loss_weight*F.binary_cross_entropy_with_logits(v_logits[:n_masked_patches], correct.detach(), reduction="mean")
 
             loss_dict["L_cal"] = lcal
             loss_dict["dist"] = dist.mean()

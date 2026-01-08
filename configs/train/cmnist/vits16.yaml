@@ -9,10 +9,6 @@ ibot:
   head_hidden_dim: 768                # smaller head is enough
   head_n_prototypes: 512
   head_nlayers: 3
-  mask_sample_probability: 0.25
-  mask_ratio_min_max:
-    - 0.3
-    - 0.7
 lcal:
   mode: cosine
   loss_weight: 1.0
@@ -26,7 +22,7 @@ train:
   OFFICIAL_EPOCH_LENGTH: 50
 student:
   arch: vit_small
-  patch_size: 7
+  patch_size: 14
   drop_path_rate: 0.0
   ffn_layer: mlp
   block_chunks: 0
@@ -37,16 +33,16 @@ teacher:
   teacher_temp: 0.05
   warmup_teacher_temp_epochs: 10       # shorter warmup for small dataset
 optim:
-  epochs: 100
+  epochs: 1000
   weight_decay: 0.04
   weight_decay_end: 0.06
   base_lr: 2e-4 # learning rate for a batch size of 1024
   warmup_epochs: 10
 crops:
   global_crops_scale:
-  - 0.4
+  - 0.7
   - 1.0
-  local_crops_number: 8
+  local_crops_number: 4
   local_crops_scale:
   - 0.15
   - 0.4

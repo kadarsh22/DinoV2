@@ -133,6 +133,7 @@ class Trainer:
                     "train/koleo_loss": self.metric_logger.meters["koleo_loss"].avg,
                     "train/lr": self.metric_logger.meters["lr"].value,
                     "train/wd": self.metric_logger.meters["wd"].value,
+                    "train/tau": self.metric_logger.meters["tau"].value,
                     "train/iteration": self.iteration,
                 }
 

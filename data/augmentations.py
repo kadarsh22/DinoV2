@@ -46,7 +46,7 @@ class DataAugmentationDINO(object):
                 transforms.RandomResizedCrop(
                     global_crops_size, scale=global_crops_scale, interpolation=transforms.InterpolationMode.BICUBIC
                 ),
-                # transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomHorizontalFlip(p=0.5),
             ]
         )
 
@@ -55,7 +55,7 @@ class DataAugmentationDINO(object):
                 transforms.RandomResizedCrop(
                     local_crops_size, scale=local_crops_scale, interpolation=transforms.InterpolationMode.BICUBIC
                 ),
-                # transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomHorizontalFlip(p=0.5),
             ]
         )
 
@@ -89,13 +89,13 @@ class DataAugmentationDINO(object):
             ]
         )
 
-        # self.global_transfo1 = transforms.Compose([color_jittering, global_transfo1_extra, self.normalize])
-        # self.global_transfo2 = transforms.Compose([color_jittering, global_transfo2_extra, self.normalize])
-        # self.local_transfo = transforms.Compose([color_jittering, local_transfo_extra, self.normalize])
+        self.global_transfo1 = transforms.Compose([color_jittering, global_transfo1_extra, self.normalize])
+        self.global_transfo2 = transforms.Compose([color_jittering, global_transfo2_extra, self.normalize])
+        self.local_transfo = transforms.Compose([color_jittering, local_transfo_extra, self.normalize])
         #
-        self.global_transfo1 = transforms.Compose([self.normalize])
-        self.global_transfo2 = transforms.Compose([self.normalize])
-        self.local_transfo = transforms.Compose([self.normalize])
+        # self.global_transfo1 = transforms.Compose([self.normalize])
+        # self.global_transfo2 = transforms.Compose([self.normalize])
+        # self.local_transfo = transforms.Compose([self.normalize])
 
     def __call__(self, image):
         output = {}

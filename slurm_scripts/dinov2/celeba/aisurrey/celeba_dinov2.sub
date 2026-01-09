@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --partition=3090
-#SBATCH --time=03:00:00:00
+#SBATCH --time=72:00:00
 #SBATCH -o slurm_outputs/celeba/%x_%A_%a.out
 #SBATCH -e slurm_outputs/celeba/%x_%A_%a.err
 
@@ -18,4 +18,14 @@ cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
 # Launch (single-node torchrun)
 # -----------------------------
 srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --standalone --nproc_per_node=1 main.py \
-  --run_name "celeba_dinov2_baseline"
+  --run_name "celeba_dinov2_baseline" \
+  --config_file \
+  configs/train/celeba/vits16.yaml\
+  --dataset \
+  CelebA \
+  --eval_fname \
+  configs/eval/celeba/eval_dinov2.yaml \
+  --output_dir \
+  /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/celeba \
+  --dataset_path \
+  /mnt/fast/nobackup/users/ak03476/data/celebA

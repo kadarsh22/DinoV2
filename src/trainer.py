@@ -126,20 +126,24 @@ class Trainer:
             self.iteration = self.iteration + 1
             # --------- Logging ----------
             if self.global_rank == 0 and self.iteration % self.eval_params["meta"]["log_every"] == 0:
-                wandb.log(
-                    {
-                        "train/total_loss": self.metric_logger.meters['total_loss'].avg,
-                        "train/dino_local_crop_loss": self.metric_logger.meters['dino_local_crops_loss'].avg,
-                        "train/ibot_loss": self.metric_logger.meters['ibot_loss'].avg,
-                        "train/koleo_loss": self.metric_logger.meters['koleo_loss'].avg,
-                        "train/l_cal": self.metric_logger.meters['L_cal'].avg,
-                        "train/dist": self.metric_logger.meters['dist'].avg,
-                        "train/tau": self.metric_logger.meters['tau'].value,
-                        "train/lr": self.metric_logger.meters['lr'].value,
-                        "train/wd": self.metric_logger.meters['wd'].value,
-                        "train/iteration": self.iteration,
-                    }
-                )
+                log_payload = {
+                    "train/total_loss": self.metric_logger.meters["total_loss"].avg,
+                    "train/dino_local_crop_loss": self.metric_logger.meters["dino_local_crops_loss"].avg,
+                    "train/ibot_loss": self.metric_logger.meters["ibot_loss"].avg,
+                    "train/koleo_loss": self.metric_logger.meters["koleo_loss"].avg,
+                    "train/lr": self.metric_logger.meters["lr"].value,
+                    "train/wd": self.metric_logger.meters["wd"].value,
+                    "train/iteration": self.iteration,
+                }
+
+                m = self.metric_logger.meters.get("L_cal", None)  # or "l_cal" depending on your key
+                if m is not None and getattr(m, "count", 0) > 0:
+                    log_payload["train/l_cal"] = m.avg
+                m = self.metric_logger.meters.get("dist", None)  # or "l_cal" depending on your key
+                if m is not None and getattr(m, "count", 0) > 0:
+                    log_payload["train/dist"] = m.avg
+
+                wandb.log(log_payload)
 
             if self.iteration % self.eval_params['meta']['eval_every'] == 0:
 

@@ -27,7 +27,6 @@ def main(args):
     combined_config = {"train": train_params, "eval": eval_params,}
 
     if is_main_process():
-        pprint.pprint(train_params)
         pprint.pprint(eval_params)
 
     if is_main_process():
@@ -49,7 +48,8 @@ def main(args):
 
     model = SSLMetaArch(train_params).to(torch.device("cuda"))
     if is_main_process():
-        summary(model.teacher.backbone, input_size=(1, 3, 224, 224), device="cuda")
+        summary(model.teacher.backbone,
+        input_size=(1, 3, train_params.crops.global_crops_size, train_params.crops.global_crops_size), device="cuda")
         summary(model.teacher.dino_head, input_size=(1, model.embed_dim), device="cuda")
         summary(model.teacher.ibot_head, input_size=(1, model.embed_dim), device="cuda")
 

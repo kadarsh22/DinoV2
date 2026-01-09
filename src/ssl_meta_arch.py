@@ -344,7 +344,7 @@ class SSLMetaArch(nn.Module):
             # accumulate loss
             loss_accumulator += self.ibot_loss_weight * ibot_patch_loss
 
-        if self.do_lcal:
+        if do_lcal:
             M = n_masked_patches
             student_logits = student_global_masked_patch_tokens_after_head[:M]  # [M,K]
             teacher_probs = masked_teacher_ibot_softmaxed_centered[:M]  # [M,K]

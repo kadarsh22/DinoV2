@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=dino_celeba_baseline
+#SBATCH --job-name=dino_celeba_dist
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
@@ -18,7 +18,7 @@ cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
 # Launch (single-node torchrun)
 # -----------------------------
 srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --standalone --nproc_per_node=1 main.py \
-  --run_name "celeba_dinov2_baseline" \
+  --run_name "celeba_dinov2_baseline_estimating_dist" \
   --config_file \
   configs/train/celeba/vits16.yaml\
   --dataset \
@@ -28,4 +28,8 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --stan
   --output_dir \
   /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/celeba \
   --dataset_path \
-  /mnt/fast/nobackup/users/ak03476/data/celebA
+  /mnt/fast/nobackup/users/ak03476/data/celebA \
+  lcal.tau_start=2.0 \
+  lcal.tau_end=1.0 \
+  lcal.warmup_iterations=1000 \
+  lcal.loss_weight=1.0

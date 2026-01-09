@@ -9,7 +9,7 @@ from torchvision.datasets import CIFAR10, MNIST, CelebA
 from torchvision.transforms import (
     Compose, Resize, CenterCrop, ToTensor, Normalize, Lambda
 )
-from data.datasets.shapes3d import Shapes3d
+from data.datasets.shapes3d import Shapes3d, make_long_tailed_subset , latent_summary
 from torch.utils.data import DistributedSampler, DataLoader
 from torch.utils.data import random_split
 from data.attributes import AttributeSpec
@@ -20,7 +20,7 @@ from data.collate import collate_data_and_cast
 from utils.attribute_dataset import AttributeDataset
 
 
-def _infer_dataset(dataset, cfg: Dict[str, Any]) -> Union[
+def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
     None, tuple[Subset[Any], Subset[Any], int, list[AttributeSpec], dict[str, list[float]]], tuple[
         AttributeDataset, AttributeDataset, int, list[AttributeSpec], dict[str, list[float]]], tuple[
         CIFAR10, CIFAR10, int, bool], tuple[CelebA, CelebA, int, list[AttributeSpec], dict[str, list[float]]], tuple[
@@ -59,6 +59,22 @@ def _infer_dataset(dataset, cfg: Dict[str, Any]) -> Union[
         transform_train = None
 
         dataset_train = Shapes3d(cfg.train.dataset_path, transform=transform_train)
+        if long_tailed:
+            labels_idx_np = dataset_train.labels_idx.cpu().numpy()
+            subset_idx = make_long_tailed_subset(
+                labels_idx_np=labels_idx_np,
+                factor_id=4,
+                total=100_000,
+                imbalance_ratio=50,
+                head_at_low_index=True, seed=42)
+
+            dataset_train = Shapes3d(cfg.train.dataset_path, transform=transform_train, indices=subset_idx)
+
+            factor_names = ["floor_hue", "wall_hue", "object_hue", "scale", "shape", "orientation"]  # typical order
+            summ = latent_summary(dataset_train, factor_names=factor_names)
+
+
+
         dataset_val = Shapes3d(cfg.train.dataset_path, transform=transform_probe)
 
         N = len(dataset_train)

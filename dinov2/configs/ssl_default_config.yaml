@@ -65,6 +65,7 @@ lcal:
   tau_end: 0.1
   warmup_iterations: 10
 train:
+  long_tailed: False
   batch_size_per_gpu: 64
   dataset_path: ImageNet:split=TRAIN
   output_dir: .

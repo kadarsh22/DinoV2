@@ -8,8 +8,8 @@
 #SBATCH --partition=3090,3090_risk
 #SBATCH --time=24:00:00
 #SBATCH --array=0-124
-#SBATCH -o slurm_outputs/hp_search/%x_%A_%a.out
-#SBATCH -e slurm_outputs/hp_search/%x_%A_%a.err
+#SBATCH -o slurm_outputs/cmnist/hp_search/%x_%A_%a.out
+#SBATCH -e slurm_outputs/cmnist/hp_search/%x_%A_%a.err
 
 set -euo pipefail
 mkdir -p slurm_outputs
@@ -55,6 +55,10 @@ cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
 # -----------------------------
 srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --standalone --nproc_per_node=1 main.py \
   --run_name "${RUN_NAME}" \
+  --config_file configs/train/cmnist/vits16.yaml \
+  --eval_fname configs/eval/cmnist/eval_dinov2.yaml \
+  --run_name "dinov2_cmnist_baseline" \
+  --dataset cmnist \
   opts.lcal.tau_start="${TAU_START}" \
   opts.lcal.tau_end="${TAU_END}" \
   opts.lcal.warmup_iterations="${WARMUP_ITERS}"

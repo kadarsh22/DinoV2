@@ -6,7 +6,7 @@ meta:
   eval_every: 2000
   log_every: 50
 #  cache_dir: /leonardo_work/EUHPC_D27_070/cache
-  cache_dir: /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/cache
+  cache_dir: /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/cmnist/cache
 
 trainer:
   max_epochs: 100

@@ -357,7 +357,7 @@ class SSLMetaArch(nn.Module):
                 correct = (dist < tau).to(dtype=v_logits.dtype).unsqueeze(-1)  # [M,1]
 
             # BCE-with-logits (targets must match shape [M,1])
-            lcal = self.cfg.lcal.loss_weight*F.binary_cross_entropy_with_logits(v_logits[:n_masked_patches], correct.detach(), reduction="mean")
+            lcal = 0*self.cfg.lcal.loss_weight*F.binary_cross_entropy_with_logits(v_logits[:n_masked_patches], correct.detach(), reduction="mean")
 
             loss_dict["L_cal"] = lcal
             loss_dict["dist"] = dist.mean()

@@ -107,7 +107,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="/mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs",
+        default="/mnt/fast/nobackup/scratch4weeks/ak03476/cmnist/dinov2_outputs",
         help="Output directory for logs/checkpoints",
     )
     parser.add_argument("--seed", type=int, default=0, help="Random seed")

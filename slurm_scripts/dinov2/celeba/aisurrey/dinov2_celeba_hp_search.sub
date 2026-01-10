@@ -5,11 +5,11 @@
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
-#SBATCH --partition=3090,3090_risk
+#SBATCH --partition=3090,3090_risk,2080ti
 #SBATCH --time=24:00:00
-#SBATCH --array=0-124
-#SBATCH -o slurm_outputs/hp_search/%x_%A_%a.out
-#SBATCH -e slurm_outputs/hp_search/%x_%A_%a.err
+#SBATCH --array=0-99
+#SBATCH -o slurm_outputs/celeba/hp_search/%x_%A_%a.out
+#SBATCH -e slurm_outputs/celeba/hp_search/%x_%A_%a.err
 
 set -euo pipefail
 mkdir -p slurm_outputs
@@ -17,9 +17,9 @@ mkdir -p slurm_outputs
 # -----------------------------
 # Hyperparameter grid
 # -----------------------------
-TAU_START_LIST=(6.8 6.5 6.3 7.0 7.5)
-TAU_END_LIST=(4.8 3.8 2.8 3.0 2.0)
-WARMUP_ITERS_LIST=(100 200 300 400 500)
+TAU_START_LIST=(8 8.5 9 9.5 10)
+TAU_END_LIST=(3 4.5 2 3.5)
+WARMUP_ITERS_LIST=(100 200 400 500 1000)
 
 # Total combos
 NS=${#TAU_START_LIST[@]}

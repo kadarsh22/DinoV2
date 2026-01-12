@@ -103,7 +103,7 @@ if __name__ == "__main__":
     # ---------------------------
     # Run / logging
     # ---------------------------
-    parser.add_argument("--run_name", type=str, default="test", help="W&B run name")
+    parser.add_argument("--run_name", type=str, required=True, help="W&B run name")
     parser.add_argument(
         "--output_dir",
         type=str,
@@ -119,7 +119,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset_path",
         type=str,
-        default="/mnt/fast/nobackup/users/ak03476/data/verfied_cmnist/uncorrelated/ColoredMNIST-Skewed0.9-Severity4",
+        default="/mnt/fast/nobackup/users/ak03476/data/verfied_cmnist/uncorrelated/ColoredMNIST-Skewed0.9-Severity1",
         help="Path to the dataset root",
     )
 

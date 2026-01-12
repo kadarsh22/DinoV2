@@ -5,9 +5,9 @@
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
-#SBATCH --partition=3090,3090_risk
+#SBATCH --partition=3090,3090_risk,2080ti
 #SBATCH --time=24:00:00
-#SBATCH --array=0-124
+#SBATCH --array=0-63
 #SBATCH -o slurm_outputs/cmnist/hp_search/%x_%A_%a.out
 #SBATCH -e slurm_outputs/cmnist/hp_search/%x_%A_%a.err
 
@@ -17,9 +17,9 @@ mkdir -p slurm_outputs
 # -----------------------------
 # Hyperparameter grid
 # -----------------------------
-TAU_START_LIST=(6.8 6.5 6.3 7.0 7.5)
-TAU_END_LIST=(4.8 3.8 2.8 3.0 2.0)
-WARMUP_ITERS_LIST=(100 200 300 400 500)
+TAU_START_LIST=(6.5 7.0 7.5 8.0)
+TAU_END_LIST=(3.5 2.5 4.0 2.0)
+WARMUP_ITERS_LIST=(20 50 100 400)
 
 # Total combos
 NS=${#TAU_START_LIST[@]}
@@ -57,8 +57,9 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --stan
   --run_name "${RUN_NAME}" \
   --config_file configs/train/cmnist/vits16.yaml \
   --eval_fname configs/eval/cmnist/eval_dinov2.yaml \
-  --run_name "dinov2_cmnist_baseline" \
   --dataset cmnist \
-  opts.lcal.tau_start="${TAU_START}" \
-  opts.lcal.tau_end="${TAU_END}" \
-  opts.lcal.warmup_iterations="${WARMUP_ITERS}"
+  lcal.tau_start="${TAU_START}" \
+  lcal.tau_end="${TAU_END}" \
+  lcal.warmup_iterations="${WARMUP_ITERS}" \
+  lcal.loss_weight=1.0
+

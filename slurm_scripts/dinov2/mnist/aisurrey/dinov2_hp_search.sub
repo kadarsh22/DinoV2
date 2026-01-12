@@ -17,8 +17,8 @@ mkdir -p slurm_outputs
 # -----------------------------
 # Hyperparameter grid
 # -----------------------------
-TAU_START_LIST=(6.5 7.0 7.5 8.0)
-TAU_END_LIST=(3.5 2.5 4.0 2.0)
+TAU_START_LIST=(2.0 1.8 2.5 3.0)
+TAU_END_LIST=(0.2 0.1 0.4 0.5)
 WARMUP_ITERS_LIST=(20 50 100 400)
 
 # Total combos
@@ -50,6 +50,7 @@ echo "=== Trial ${tid}/${TOTAL} ==="
 echo "tau_start=${TAU_START} tau_end=${TAU_END} warmup_iters=${WARMUP_ITERS}"
 echo "run_name=${RUN_NAME}"
 cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
+export WANDB_RUN_GROUP=cmnist_feature_space
 # -----------------------------
 # Launch (single-node torchrun)
 # -----------------------------

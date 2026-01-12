@@ -11,10 +11,10 @@ ibot:
   head_nlayers: 3
 lcal:
   mode: cosine
-  loss_weight: 1.0
-  tau_start: 1.0
-  tau_end: 0.1
-  warmup_iterations: 100
+  loss_weight: 5.0
+  tau_start: 1.8
+  tau_end: 0.5
+  warmup_iterations: 50
 train:
   batch_size_per_gpu: 64
   dataset_path: ImageNet22k

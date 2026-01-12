@@ -84,7 +84,8 @@ class DataAugmentationDINO(object):
         # normalization
         self.normalize = transforms.Compose(
             [
-                transforms.ToTensor(),
+                transforms.ToTensor(),  # (1, H, W)
+                transforms.Lambda(repeat_3_channels),  # (3, H, W)
                 make_normalize_transform(),
             ]
         )
@@ -120,3 +121,7 @@ class DataAugmentationDINO(object):
         output["offsets"] = ()
 
         return output
+
+def repeat_3_channels(x):
+    # x: (1, H, W) -> (3, H, W)
+    return x.repeat(3, 1, 1)

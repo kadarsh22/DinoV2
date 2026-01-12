@@ -10,6 +10,7 @@ from torchvision.transforms import (
     Compose, Resize, CenterCrop, ToTensor, Normalize, Lambda
 )
 from data.datasets.shapes3d import Shapes3d, make_long_tailed_subset , latent_summary
+from data.datasets.dsprites import DSprites
 from torch.utils.data import DistributedSampler, DataLoader
 from torch.utils.data import random_split
 from data.attributes import AttributeSpec
@@ -96,6 +97,58 @@ def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
             AttributeSpec("scale", num_classes=8, index=3),
             AttributeSpec("shape", num_classes=4, index=4),
             AttributeSpec("orientation", num_classes=15, index=5),
+        ]
+
+        return train, val, 10, attributes, normalisation_params
+
+    elif dataset in {'dsprites'}:
+        normalisation_params = {'mean': [0.5, 0.5, 0.5], 'std': [0.5, 0.5, 0.5]}
+
+        transform_probe = Compose([
+            Resize(cfg.crops.global_crops_size, antialias=True),
+            CenterCrop(cfg.crops.global_crops_size),
+            ToTensor(),
+            Normalize(mean=normalisation_params["mean"], std=normalisation_params["std"]),
+        ])
+
+        transform_train = None
+
+        dataset_train = DSprites(cfg.train.dataset_path, transform=transform_train)
+        if long_tailed:
+            labels_idx_np = dataset_train.labels_idx.cpu().numpy()
+            subset_idx = make_long_tailed_subset(
+                labels_idx_np=labels_idx_np,
+                factor_id=4,
+                total=100_000,
+                imbalance_ratio=50,
+                head_at_low_index=True, seed=42)
+
+            dataset_train = Shapes3d(cfg.train.dataset_path, transform=transform_train, indices=subset_idx)
+
+            factor_names = ["floor_hue", "wall_hue", "object_hue", "scale", "shape", "orientation"]  # typical order
+            summ = latent_summary(dataset_train, factor_names=factor_names)
+
+
+        dataset_val = DSprites(cfg.train.dataset_path, transform=transform_probe)
+
+        N = len(dataset_train)
+        train_size = int(0.8 * N)
+
+        g = torch.Generator().manual_seed(0)
+        perm = torch.randperm(N, generator=g)
+
+        train_idx = perm[:train_size].tolist()
+        val_idx = perm[train_size:].tolist()
+
+        train = Subset(dataset_train, train_idx)
+        val = Subset(dataset_val, val_idx)
+
+        attributes = [
+            AttributeSpec("shape", num_classes=3, index=0),
+            AttributeSpec("scale", num_classes=6, index=1),
+            AttributeSpec("orientation", num_classes=40, index=2),
+            AttributeSpec("posX", num_classes=32, index=3),
+            AttributeSpec("posY", num_classes=32, index=4),
         ]
 
         return train, val, 10, attributes, normalisation_params

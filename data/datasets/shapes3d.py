@@ -104,12 +104,18 @@ def make_long_tailed_subset(labels_idx_np: np.ndarray,
 
 
 
-def latent_summary(dataset, factor_names=None, topk=None):
+from fractions import Fraction
+import numpy as np
+import torch
+
+def latent_summary(dataset, factor_names=None, topk=None, simplify=True, max_denominator=None):
     """
     Summarize marginal distributions of each latent factor in a Shapes3d dataset,
     respecting dataset.indices if present.
+
+    Prints fractions (count/total) instead of absolute counts.
     """
-    # get labels as numpy (N,6) for the FULL dataset
+    # get labels as numpy (N,d) for the FULL dataset
     labels = dataset.labels_idx
     if torch.is_tensor(labels):
         labels = labels.cpu().numpy()
@@ -130,23 +136,48 @@ def latent_summary(dataset, factor_names=None, topk=None):
         vals = labels[:, j]
         K = int(vals.max()) + 1
         counts = np.bincount(vals, minlength=K)
-        probs = counts / counts.sum()
+        total = int(counts.sum())
 
-        head = counts.max()
-        tail = counts.min()
+        probs = counts / total if total > 0 else np.zeros_like(counts, dtype=float)
+
+        # Fractions count/total (optionally simplified)
+        fracs = []
+        for c in counts.tolist():
+            f = Fraction(int(c), total) if total > 0 else Fraction(0, 1)
+            if simplify:
+                if max_denominator is not None:
+                    f = f.limit_denominator(max_denominator)
+                else:
+                    # already exact; keep as-is
+                    pass
+            fracs.append(f)
+
+        head = counts.max() if total > 0 else 0
+        tail = counts.min() if total > 0 else 0
         head_tail_ratio = (head / tail) if tail > 0 else np.inf
 
         print(f"{factor_names[j]} (K={K})")
-        print("  counts:", counts.tolist())
-        print("  probs: ", [round(p, 6) for p in probs.tolist()])
+        print("  fractions:", [f"{f.numerator}/{f.denominator}" for f in fracs])
+        print("  probs:    ", [round(float(p), 6) for p in probs.tolist()])
         print(f"  head/tail ratio: {head_tail_ratio:.3f}\n")
 
-        summaries.append({"name": factor_names[j], "counts": counts, "probs": probs})
+        summaries.append({
+            "name": factor_names[j],
+            "counts": counts,
+            "total": total,
+            "fractions": fracs,
+            "probs": probs
+        })
 
-        # Optional: show only top-k most frequent values
         if topk is not None:
             order = np.argsort(-counts)
-            print(f"  top-{topk} values:", [(int(v), int(counts[v]), float(probs[v])) for v in order[:topk]])
-            print()
+            top = []
+            for v in order[:topk]:
+                v = int(v)
+                c = int(counts[v])
+                f = Fraction(c, total) if total > 0 else Fraction(0, 1)
+                top.append((v, f"{f.numerator}/{f.denominator}", float(probs[v])))
+            print(f"  top-{topk} values (value, frac, prob): {top}\n")
 
     return summaries
+

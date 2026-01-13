@@ -138,9 +138,9 @@ def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
                 imbalance_ratio=50,
                 head_at_low_index=True, seed=42)
 
-            dataset_train = Shapes3d(cfg.train.dataset_path, transform=transform_train, indices=subset_idx)
+            dataset_train = DSprites(cfg.train.dataset_path, transform=transform_train, indices=subset_idx)
 
-            factor_names = ["floor_hue", "wall_hue", "object_hue", "scale", "shape", "orientation"]  # typical order
+            factor_names = ["SHAPE", "SIZE", "ORIENTATION", "X-POS", "Y-pos"]  # typical order
             summ = latent_summary(dataset_train, factor_names=factor_names)
 
 
@@ -226,12 +226,19 @@ def build_dataloaders(dataset, train_params, eval_params):
         max_num_patches=0.5 * img_size // patch_size * img_size // patch_size,
     )
 
-    data_transform = DataAugmentationDINODsprites(
-        global_crops_size=train_params.crops.global_crops_size,
-        local_crops_size=train_params.crops.local_crops_size,
-        local_crops_number=train_params.crops.local_crops_number,
-
-    )
+    if dataset == 'dsprites':
+        data_transform = DataAugmentationDINODsprites(
+            global_crops_size=train_params.crops.global_crops_size,
+            local_crops_size=train_params.crops.local_crops_size,
+            local_crops_number=train_params.crops.local_crops_number)
+    else:
+        data_transform = DataAugmentationDINO(
+            train_params.crops.global_crops_scale,
+            train_params.crops.local_crops_scale,
+            train_params.crops.local_crops_number,
+            global_crops_size=train_params.crops.global_crops_size,
+            local_crops_size=train_params.crops.local_crops_size,
+        )
 
     if isinstance(train_dataset, Subset):
         train_dataset.dataset.transform = data_transform

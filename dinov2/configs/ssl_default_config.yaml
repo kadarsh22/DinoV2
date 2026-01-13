@@ -131,3 +131,7 @@ evaluation:
 hydra:
   run:
     dir: .
+wandb:
+  project: JEPA_attribute_collapse
+  entity : kadarsh22
+  dir: /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2

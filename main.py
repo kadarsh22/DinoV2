@@ -4,6 +4,7 @@ import os
 import hydra
 import torch
 import wandb
+from omegaconf import OmegaConf
 from torch.distributed import destroy_process_group
 from torchinfo import summary
 
@@ -31,13 +32,25 @@ def main(args):
         pprint.pprint(eval_params)
 
     if is_main_process():
+        wandb_cfg = OmegaConf.to_container(train_params, resolve=True)
         wandb.init(
-            project="ijepa-cmnist",
+            project=train_params.wandb.project,
             name=args.run_name ,
-            config=combined_config,
+            config=wandb_cfg,
         )
-        project_root = os.path.dirname(os.path.abspath(__file__))
-        wandb.run.log_code(project_root, include_fn=lambda p: p.endswith(".py") or p.endswith(".yaml"))
+
+        entry_root = os.path.dirname(os.path.abspath(__file__))
+
+        wandb.run.log_code(
+            entry_root,
+            include_fn=lambda p: os.path.isdir(p) or p.endswith((".py", ".yaml")),
+        )
+
+        wandb.run.log_code(
+            train_params.wandb.dir,
+            include_fn=lambda p: os.path.isdir(p) or p.endswith((".py", ".yaml")),
+        )
+
 
 
     (unsupervised_loader, unsupervised_sampler,

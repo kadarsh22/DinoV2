@@ -1,0 +1,51 @@
+#!/bin/bash
+#SBATCH --job-name=dino_celeba_lw
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-task=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --partition=3090
+#SBATCH --time=72:00:00
+#SBATCH --array=0-4
+#SBATCH -o slurm_outputs/celeba/loss_weight/%x_%A_%a.out
+#SBATCH -e slurm_outputs/celeba/loss_weight/%x_%A_%a.err
+
+set -euo pipefail
+mkdir -p slurm_outputs/celeba/loss_weight
+
+# -----------------------------
+# Fixed seed + loss-weight sweep
+# -----------------------------
+SEED=0
+LOSS_WEIGHT_LIST=(1.0 2.0 3.0 4.0 5.0)
+N=${#LOSS_WEIGHT_LIST[@]}
+
+if [[ "${SLURM_ARRAY_TASK_ID}" -ge "${N}" ]]; then
+  echo "SLURM_ARRAY_TASK_ID=${SLURM_ARRAY_TASK_ID} >= N=${N}. Exiting."
+  exit 1
+fi
+
+LW="${LOSS_WEIGHT_LIST[$SLURM_ARRAY_TASK_ID]}"
+
+cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
+
+RUN_NAME="celeba_dinov2_ours_lcal_weight_${SEED}_lw${LW}"
+
+echo "=== Trial ${SLURM_ARRAY_TASK_ID}/${N} ==="
+echo "seed=${SEED}"
+echo "lcal.loss_weight=${LW}"
+echo "run_name=${RUN_NAME}"
+
+srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --standalone --nproc_per_node=1 main.py \
+  --run_name "${RUN_NAME}" \
+  --config_file configs/train/celeba/vits16.yaml \
+  --dataset CelebA \
+  --eval_fname configs/eval/celeba/eval_dinov2.yaml \
+  --output_dir /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/celeba \
+  --dataset_path /mnt/fast/nobackup/users/ak03476/data/celebA \
+  train.seed="${SEED}" \
+  lcal.tau_start=9.5 \
+  lcal.tau_end=3.5 \
+  lcal.warmup_iterations=400 \
+  lcal.loss_weight="${LW}"

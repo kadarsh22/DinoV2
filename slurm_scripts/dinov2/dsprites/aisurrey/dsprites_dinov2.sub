@@ -1,0 +1,31 @@
+#!/bin/bash
+#SBATCH --job-name=dino_dsprites_baseline
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-task=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --partition=3090,3090_risk
+#SBATCH --time=72:00:00
+#SBATCH -o slurm_outputs/dsprites/%x_%A_%a.out
+#SBATCH -e slurm_outputs/dsprites/%x_%A_%a.err
+
+set -euo pipefail
+mkdir -p slurm_outputs
+
+cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
+# -----------------------------
+# Launch (single-node torchrun)
+# -----------------------------
+srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --standalone --nproc_per_node=1 main.py \
+  --run_name "dsprites_dinov2_baseline" \
+  --config_file \
+  configs/train/dsprites/vits16.yaml\
+  --dataset \
+  dsprites \
+  --eval_fname \
+  configs/eval/dsprites/eval_dinov2.yaml \
+  --output_dir \
+  /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/dsprites \
+  --dataset_path \
+  /mnt/fast/nobackup/users/ak03476/data/dsprites/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz

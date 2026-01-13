@@ -15,7 +15,7 @@ from torch.utils.data import DistributedSampler, DataLoader
 from torch.utils.data import random_split
 from data.attributes import AttributeSpec
 from data.loaders import make_data_loader, SamplerType
-from data.augmentations import DataAugmentationDINO
+from data.augmentations import DataAugmentationDINO, DataAugmentationDINODsprites
 from data.masking import MaskingGenerator
 from data.collate import collate_data_and_cast
 from utils.attribute_dataset import AttributeDataset
@@ -38,8 +38,17 @@ def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
     elif dataset in {"cmnist", "c_mnist"}:
         normalisation_params = {'mean': [0.5, 0.5, 0.5], 'std': [0.5, 0.5, 0.5]}
         transform_probe = Compose(
-            [Resize(cfg.crops.global_crops_size), CenterCrop(cfg.crops.global_crops_size), ToTensor(),
-             Normalize(mean=normalisation_params['mean'], std=normalisation_params['std'])])
+            [
+                Resize(cfg.crops.global_crops_size),
+                CenterCrop(cfg.crops.global_crops_size),
+                ToTensor(),  # (1, H, W)
+                Lambda(lambda x: x.repeat(3, 1, 1)),  # (3, H, W)
+                Normalize(
+                    mean=normalisation_params["mean"],
+                    std=normalisation_params["std"],
+                ),
+            ]
+        )
 
         train = AttributeDataset(root=cfg.train.dataset_path, split='train')
         val = AttributeDataset(root=cfg.train.dataset_path, split='valid', transform=transform_probe)
@@ -104,12 +113,18 @@ def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
     elif dataset in {'dsprites'}:
         normalisation_params = {'mean': [0.5, 0.5, 0.5], 'std': [0.5, 0.5, 0.5]}
 
-        transform_probe = Compose([
+        transform_probe = Compose(
+            [
             Resize(cfg.crops.global_crops_size, antialias=True),
-            CenterCrop(cfg.crops.global_crops_size),
-            ToTensor(),
-            Normalize(mean=normalisation_params["mean"], std=normalisation_params["std"]),
-        ])
+                CenterCrop(cfg.crops.global_crops_size),
+                ToTensor(),
+                Lambda(lambda x: x.repeat(3, 1, 1)),  # (3, H, W)
+                Normalize(
+                    mean=normalisation_params["mean"],
+                    std=normalisation_params["std"],
+                ),
+            ]
+        )
 
         transform_train = None
 
@@ -211,12 +226,11 @@ def build_dataloaders(dataset, train_params, eval_params):
         max_num_patches=0.5 * img_size // patch_size * img_size // patch_size,
     )
 
-    data_transform = DataAugmentationDINO(
-        train_params.crops.global_crops_scale,
-        train_params.crops.local_crops_scale,
-        train_params.crops.local_crops_number,
+    data_transform = DataAugmentationDINODsprites(
         global_crops_size=train_params.crops.global_crops_size,
         local_crops_size=train_params.crops.local_crops_size,
+        local_crops_number=train_params.crops.local_crops_number,
+
     )
 
     if isinstance(train_dataset, Subset):

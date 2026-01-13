@@ -125,3 +125,73 @@ class DataAugmentationDINO(object):
 def repeat_3_channels(x):
     # x: (1, H, W) -> (3, H, W)
     return x.repeat(3, 1, 1)
+
+
+class DataAugmentationDINODsprites(object):
+    def __init__(
+        self,
+        global_crops_size=56,
+        local_crops_size=56,
+        local_crops_number=2,
+    ):
+        self.global_crops_size = global_crops_size
+        self.local_crops_size = local_crops_size
+        self.local_crops_number = local_crops_number
+
+        logger.info("###################################")
+        logger.info("Using dSprites-safe DINO augmentations")
+        logger.info(f"global_crops_size: {global_crops_size}")
+        logger.info(f"local_crops_size: {local_crops_size}")
+        logger.info(f"local_crops_number: {local_crops_number}")
+        logger.info("###################################")
+
+        # 🔒 FIXED camera geometry (preserves posX / posY)
+        self.geometric_augmentation_global = transforms.Compose(
+            [
+                transforms.Resize(global_crops_size),
+                transforms.CenterCrop(global_crops_size),
+            ]
+        )
+
+        self.geometric_augmentation_local = transforms.Compose(
+            [
+                transforms.Resize(local_crops_size),
+                transforms.CenterCrop(local_crops_size),
+            ]
+        )
+
+        # normalization + grayscale → fake RGB
+        self.normalize = transforms.Compose(
+            [
+                transforms.ToTensor(),                  # (1, H, W)
+                transforms.Lambda(repeat_3_channels),    # (3, H, W)
+                make_normalize_transform(),
+            ]
+        )
+
+        # no color, no blur — geometry is the signal
+        self.global_transfo1 = transforms.Compose([self.normalize])
+        self.global_transfo2 = transforms.Compose([self.normalize])
+        self.local_transfo = transforms.Compose([self.normalize])
+
+    def __call__(self, image):
+        output = {}
+
+        # global crops
+        im1_base = self.geometric_augmentation_global(image)
+        im2_base = self.geometric_augmentation_global(image)
+
+        global_crop_1 = self.global_transfo1(im1_base)
+        global_crop_2 = self.global_transfo2(im2_base)
+
+        output["global_crops"] = [global_crop_1, global_crop_2]
+        output["global_crops_teacher"] = [global_crop_1, global_crop_2]
+
+        # local crops (identical geometry, multiple views)
+        output["local_crops"] = [
+            self.local_transfo(self.geometric_augmentation_local(image))
+            for _ in range(self.local_crops_number)
+        ]
+
+        output["offsets"] = ()
+        return output

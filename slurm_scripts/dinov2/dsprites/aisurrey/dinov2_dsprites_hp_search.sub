@@ -7,14 +7,14 @@
 #SBATCH --mem=64G
 #SBATCH --partition=3090,3090_risk,2080ti
 #SBATCH --time=24:00:00
-#SBATCH --array=0-63
+#SBATCH --array=0-255
 #SBATCH -o slurm_outputs/dsprites/hp_search/%x_%A_%a.out
 #SBATCH -e slurm_outputs/dsprites/hp_search/%x_%A_%a.err
 
 set -euo pipefail
 
 # Make sure this directory exists *before* submission
-mkdir -p slurm_outputs
+mkdir -p slurm_outputs/dsprites/hp_search
 
 # -----------------------------
 # Hyperparameter grid
@@ -22,11 +22,13 @@ mkdir -p slurm_outputs
 TAU_START_LIST=(1.8 2.4 2.6 3.0)
 TAU_END_LIST=(0.3 0.2 0.1 0.01)
 WARMUP_ITERS_LIST=(100 200 400 500)
+LOSS_WEIGHT_LIST=(0.25 0.5 1.0 2.0)   # <-- edit as needed
 
 NS=${#TAU_START_LIST[@]}
 NE=${#TAU_END_LIST[@]}
 NW=${#WARMUP_ITERS_LIST[@]}
-TOTAL=$((NS * NE * NW))
+NL=${#LOSS_WEIGHT_LIST[@]}
+TOTAL=$((NS * NE * NW * NL))
 
 # Guard (still useful if someone edits --array later)
 if [[ "${SLURM_ARRAY_TASK_ID}" -ge "${TOTAL}" ]]; then
@@ -34,22 +36,26 @@ if [[ "${SLURM_ARRAY_TASK_ID}" -ge "${TOTAL}" ]]; then
   exit 1
 fi
 
-# Map array index -> (i, j, k)
+# Map array index -> (i, j, k, l)
 tid=${SLURM_ARRAY_TASK_ID}
+
 i=$(( tid % NS ))
 j=$(( (tid / NS) % NE ))
-k=$(( tid / (NS * NE) ))
+k=$(( (tid / (NS * NE)) % NW ))
+l=$(( tid / (NS * NE * NW) ))
 
 TAU_START=${TAU_START_LIST[$i]}
 TAU_END=${TAU_END_LIST[$j]}
 WARMUP_ITERS=${WARMUP_ITERS_LIST[$k]}
+LOSS_WEIGHT=${LOSS_WEIGHT_LIST[$l]}
 
-RUN_NAME="dinov2_dsprites_ours_hp_tauS${TAU_START}_tauE${TAU_END}_wu${WARMUP_ITERS}"
+RUN_NAME="dinov2_dsprites_ours_hp_tauS${TAU_START}_tauE${TAU_END}_wu${WARMUP_ITERS}_lw${LOSS_WEIGHT}"
 
 echo "=== Trial ${tid}/${TOTAL} ==="
 echo "tau_start=${TAU_START}"
 echo "tau_end=${TAU_END}"
 echo "warmup_iters=${WARMUP_ITERS}"
+echo "loss_weight=${LOSS_WEIGHT}"
 echo "run_name=${RUN_NAME}"
 
 cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
@@ -70,4 +76,4 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
   lcal.tau_start="${TAU_START}" \
   lcal.tau_end="${TAU_END}" \
   lcal.warmup_iterations="${WARMUP_ITERS}" \
-  lcal.loss_weight=1.0
+  lcal.loss_weight="${LOSS_WEIGHT}"

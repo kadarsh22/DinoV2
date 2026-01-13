@@ -7,25 +7,27 @@
 #SBATCH --mem=64G
 #SBATCH --partition=3090,3090_risk,2080ti
 #SBATCH --time=24:00:00
-#SBATCH --array=0-99
+#SBATCH --array=0-80
 #SBATCH -o slurm_outputs/celeba/hp_search/%x_%A_%a.out
 #SBATCH -e slurm_outputs/celeba/hp_search/%x_%A_%a.err
 
 set -euo pipefail
-mkdir -p slurm_outputs
+mkdir -p slurm_outputs/celeba/hp_search
 
 # -----------------------------
 # Hyperparameter grid
 # -----------------------------
-TAU_START_LIST=(8 8.5 9 9.5 10)
-TAU_END_LIST=(3 4.5 2 3.5)
-WARMUP_ITERS_LIST=(100 200 400 500 1000)
+TAU_START_LIST=(2.0 2.5 3.5)
+TAU_END_LIST=(0.3 0.2 0.1)
+WARMUP_ITERS_LIST=(100 200 500)
+LOSS_WEIGHT_LIST=(1.0 2.0 4.0)
 
 # Total combos
 NS=${#TAU_START_LIST[@]}
 NE=${#TAU_END_LIST[@]}
 NW=${#WARMUP_ITERS_LIST[@]}
-TOTAL=$((NS * NE * NW))
+NL=${#LOSS_WEIGHT_LIST[@]}
+TOTAL=$((NS * NE * NW * NL))
 
 # Guard: array size must match TOTAL
 if [[ "${SLURM_ARRAY_TASK_ID}" -ge "${TOTAL}" ]]; then
@@ -33,27 +35,31 @@ if [[ "${SLURM_ARRAY_TASK_ID}" -ge "${TOTAL}" ]]; then
   exit 1
 fi
 
-# Map array index -> (i,j,k)
+# Map array index -> (i,j,k,l)
 tid=${SLURM_ARRAY_TASK_ID}
 i=$(( tid % NS ))
 j=$(( (tid / NS) % NE ))
-k=$(( tid / (NS * NE) ))
+k=$(( (tid / (NS * NE)) % NW ))
+l=$(( tid / (NS * NE * NW) ))
 
 TAU_START=${TAU_START_LIST[$i]}
 TAU_END=${TAU_END_LIST[$j]}
 WARMUP_ITERS=${WARMUP_ITERS_LIST[$k]}
+LOSS_WEIGHT=${LOSS_WEIGHT_LIST[$l]}
 
-
-RUN_NAME="dinov2_celeba_ours_hp_tauS${TAU_START}_tauE${TAU_END}_wu${WARMUP_ITERS}"
+RUN_NAME="dinov2_celeba_ours_hp_tauS${TAU_START}_tauE${TAU_END}_wu${WARMUP_ITERS}_lw${LOSS_WEIGHT}"
 
 echo "=== Trial ${tid}/${TOTAL} ==="
-echo "tau_start=${TAU_START} tau_end=${TAU_END} warmup_iters=${WARMUP_ITERS}"
+echo "tau_start=${TAU_START} tau_end=${TAU_END} warmup_iters=${WARMUP_ITERS} loss_weight=${LOSS_WEIGHT}"
 echo "run_name=${RUN_NAME}"
+
 cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
+
 # -----------------------------
 # Launch (single-node torchrun)
 # -----------------------------
-srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --standalone --nproc_per_node=1 main.py \
+srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
+  --standalone --nproc_per_node=1 main.py \
   --run_name "${RUN_NAME}" \
   --dataset CelebA \
   --config_file configs/train/celeba/vits16.yaml \
@@ -63,4 +69,4 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --stan
   lcal.tau_start="${TAU_START}" \
   lcal.tau_end="${TAU_END}" \
   lcal.warmup_iterations="${WARMUP_ITERS}" \
-  lcal.loss_weight=1.0
+  lcal.loss_weight="${LOSS_WEIGHT}"

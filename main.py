@@ -1,8 +1,10 @@
 import argparse
 import pprint
-
+import os
+import hydra
 import torch
 import wandb
+from omegaconf import OmegaConf
 from torch.distributed import destroy_process_group
 from torchinfo import summary
 
@@ -16,7 +18,7 @@ from utils.utils import load_yaml
 from utils.visualisation import plot_crops_from_dataset
 
 
-
+@hydra.main(config_path="configs/", config_name="defaults", version_base=None)
 def main(args):
     ddp_setup()
     set_seed_custom(seed=args.seed)
@@ -30,12 +32,25 @@ def main(args):
         pprint.pprint(eval_params)
 
     if is_main_process():
+        wandb_cfg = OmegaConf.to_container(train_params, resolve=True)
         wandb.init(
-            project="ijepa-cmnist",
+            project=train_params.wandb.project,
             name=args.run_name ,
-            config=combined_config,
+            config=wandb_cfg,
         )
-        wandb.run.log_code('.')
+
+        entry_root = os.path.dirname(os.path.abspath(__file__))
+
+        wandb.run.log_code(
+            entry_root,
+            include_fn=lambda p: os.path.isdir(p) or p.endswith((".py", ".yaml")),
+        )
+
+        wandb.run.log_code(
+            train_params.wandb.dir,
+            include_fn=lambda p: os.path.isdir(p) or p.endswith((".py", ".yaml")),
+        )
+
 
 
     (unsupervised_loader, unsupervised_sampler,

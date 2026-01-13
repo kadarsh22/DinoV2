@@ -1,6 +1,7 @@
 import argparse
 import pprint
-
+import os
+import hydra
 import torch
 import wandb
 from torch.distributed import destroy_process_group
@@ -16,7 +17,7 @@ from utils.utils import load_yaml
 from utils.visualisation import plot_crops_from_dataset
 
 
-
+@hydra.main(config_path="configs/", config_name="defaults", version_base=None)
 def main(args):
     ddp_setup()
     set_seed_custom(seed=args.seed)
@@ -35,7 +36,8 @@ def main(args):
             name=args.run_name ,
             config=combined_config,
         )
-        wandb.run.log_code('.')
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        wandb.run.log_code(project_root, include_fn=lambda p: p.endswith(".py") or p.endswith(".yaml"))
 
 
     (unsupervised_loader, unsupervised_sampler,

@@ -360,7 +360,7 @@ class SSLMetaArch(nn.Module):
 
                 correct = (dist < tau).to(v_logits.dtype).unsqueeze(-1)
 
-            lcal = 0*self.cfg.lcal.loss_weight * F.binary_cross_entropy_with_logits(
+            lcal = self.cfg.lcal.loss_weight * F.binary_cross_entropy_with_logits(
                 v_logits[:M],
                 correct.detach(),
                 reduction="mean",

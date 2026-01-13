@@ -16,9 +16,10 @@ lcal:
   tau_end: 3
   warmup_iterations: 100
 train:
-  batch_size_per_gpu: 64
+  batch_size_per_gpu: 512
   dataset_path: ImageNet22k
   centering: sinkhorn_knopp
+  OFFICIAL_EPOCH_LENGTH: 1250
 student:
   arch: vit_small
   patch_size: 14
@@ -32,7 +33,7 @@ teacher:
   teacher_temp: 0.05
   warmup_teacher_temp_epochs: 10       # shorter warmup for small dataset
 optim:
-  epochs: 1000
+  epochs: 100
   weight_decay: 0.04
   weight_decay_end: 0.06
   base_lr: 2e-4 # learning rate for a batch size of 1024

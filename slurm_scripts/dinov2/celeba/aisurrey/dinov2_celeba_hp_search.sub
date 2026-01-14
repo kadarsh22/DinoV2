@@ -7,7 +7,7 @@
 #SBATCH --mem=64G
 #SBATCH --partition=3090,3090_risk,2080ti
 #SBATCH --time=24:00:00
-#SBATCH --array=0-80
+#SBATCH --array=0-95
 #SBATCH -o slurm_outputs/celeba/hp_search/%x_%A_%a.out
 #SBATCH -e slurm_outputs/celeba/hp_search/%x_%A_%a.err
 
@@ -17,9 +17,9 @@ mkdir -p slurm_outputs/celeba/hp_search
 # -----------------------------
 # Hyperparameter grid
 # -----------------------------
-TAU_START_LIST=(2.0 2.5 3.5)
-TAU_END_LIST=(0.3 0.2 0.1)
-WARMUP_ITERS_LIST=(100 200 500)
+TAU_START_LIST=(9.5 8.5 7.5 6.0)
+TAU_END_LIST=(1.5 2.0 2.5 3.5)
+WARMUP_ITERS_LIST=(100 500)
 LOSS_WEIGHT_LIST=(1.0 2.0 4.0)
 
 # Total combos

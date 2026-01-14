@@ -346,26 +346,18 @@ class SSLMetaArch(nn.Module):
 
         if do_lcal:
             M = n_masked_patches
-
-            student_feat = feature_unnorm_student[:M]  # [M, D]
-            teacher_feat = feature_unnorm_teacher[:M]  # [M, D]
+            student_logits = student_global_masked_patch_tokens_after_head[:M]  # [M,K]
+            teacher_probs = masked_teacher_ibot_softmaxed_centered[:M]  # [M,K]
 
             with torch.no_grad():
-                # normalize so distance is scale-invariant
-                s = F.normalize(student_feat, dim=-1)
-                t = F.normalize(teacher_feat, dim=-1)
 
-                # true metric distance
-                dist = ((s - t) ** 2).sum(dim=-1)  # [M]
+                logp = F.log_softmax(student_logits / self.ibot_patch_loss.student_temp, dim=-1)  # [M,K]
+                dist = -(teacher_probs * logp).sum(dim=-1)  # [M]  (lower = better, higher = weirder)
+                # dist = (dist / math.log(256)).clamp(0, 1)   # 0 good, 1 bad-ish
+                correct = (dist < tau).to(dtype=v_logits.dtype).unsqueeze(-1)  # [M,1]
 
-                correct = (dist < tau).to(v_logits.dtype).unsqueeze(-1)
-
-            lcal = self.cfg.lcal.loss_weight * F.binary_cross_entropy_with_logits(
-                v_logits[:M],
-                correct.detach(),
-                reduction="mean",
-            )
-
+            # BCE-with-logits (targets must match shape [M,1])
+            lcal = self.cfg.lcal.loss_weight*F.binary_cross_entropy_with_logits(v_logits[:n_masked_patches], correct.detach(), reduction="mean")
 
             loss_dict["L_cal"] = lcal
             loss_dict["dist"] = dist.mean()

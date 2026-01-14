@@ -39,19 +39,10 @@ def main(args):
             config=wandb_cfg,
         )
 
-        entry_root = os.path.dirname(os.path.abspath(__file__))
-
         wandb.run.log_code(
-            entry_root,
+            '.',
             include_fn=lambda p: os.path.isdir(p) or p.endswith((".py", ".yaml")),
         )
-
-        wandb.run.log_code(
-            train_params.wandb.dir,
-            include_fn=lambda p: os.path.isdir(p) or p.endswith((".py", ".yaml")),
-        )
-
-
 
     (unsupervised_loader, unsupervised_sampler,
     probe_train_loader, probe_eval_loader, attributes, normalisation_params) = build_dataloaders(args.dataset, train_params, eval_params)

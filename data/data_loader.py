@@ -230,7 +230,9 @@ def build_dataloaders(dataset, train_params, eval_params):
         data_transform = DataAugmentationDINODsprites(
             global_crops_size=train_params.crops.global_crops_size,
             local_crops_size=train_params.crops.local_crops_size,
-            local_crops_number=train_params.crops.local_crops_number)
+            local_crops_number=train_params.crops.local_crops_number,
+            global_scale=train_params.crops.global_crops_scale,
+            local_scale=train_params.crops.local_crops_scale,)
     else:
         data_transform = DataAugmentationDINO(
             train_params.crops.global_crops_scale,

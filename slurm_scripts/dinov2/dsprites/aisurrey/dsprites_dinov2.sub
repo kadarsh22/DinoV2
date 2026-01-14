@@ -28,4 +28,5 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --stan
   --output_dir \
   /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/dsprites \
   --dataset_path \
-  /mnt/fast/nobackup/users/ak03476/data/dsprites/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz
+  /mnt/fast/nobackup/users/ak03476/data/dsprites/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz \
+  lcal.loss_weight=0.0

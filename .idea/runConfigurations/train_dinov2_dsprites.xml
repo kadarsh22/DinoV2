@@ -5,7 +5,9 @@
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>
+      <env name="WANDB_IGNORE_GLOBS" value="**/.git/**,**/wandb/**,**/__pycache__/**,**/*.pt,**/*.pth,**/*.ckpt,**/*.npy,**/*.npz,**/*.tar " />
       <env name="PYTHONUNBUFFERED" value="1" />
+      <env name="CUDA_VISIBLE_DEVICES" value="1" />
     </envs>
     <option name="SDK_HOME" value="" />
     <option name="SDK_NAME" value="dinov2" />

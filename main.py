@@ -38,11 +38,8 @@ def main(args):
             name=args.run_name ,
             config=wandb_cfg,
         )
+        wandb.run.log_code('.')
 
-        wandb.run.log_code(
-            '.',
-            include_fn=lambda p: os.path.isdir(p) or p.endswith((".py", ".yaml")),
-        )
 
     (unsupervised_loader, unsupervised_sampler,
     probe_train_loader, probe_eval_loader, attributes, normalisation_params) = build_dataloaders(args.dataset, train_params, eval_params)

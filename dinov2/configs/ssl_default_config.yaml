@@ -102,7 +102,7 @@ teacher:
   in_chans: 3
   channel_adaptive: false
 optim:
-  epochs: 50
+  epochs: 100
   weight_decay: 0.04
   weight_decay_end: 0.4
   base_lr: 0.004  # learning rate for a batch size of 1024

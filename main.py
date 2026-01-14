@@ -26,7 +26,6 @@ def main(args):
     train_params = setup(args)
     train_params.train.dataset_path = args.dataset_path
     eval_params = load_yaml(args.eval_fname)
-    combined_config = {"train": train_params, "eval": eval_params,}
 
     if is_main_process():
         pprint.pprint(eval_params)

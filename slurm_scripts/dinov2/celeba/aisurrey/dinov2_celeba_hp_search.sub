@@ -5,9 +5,9 @@
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
-#SBATCH --partition=3090,3090_risk,2080ti
+#SBATCH --partition=3090,3090_risk,2080ti,rtx8000,a100
 #SBATCH --time=24:00:00
-#SBATCH --array=0-95
+#SBATCH --array=0-63
 #SBATCH -o slurm_outputs/celeba/hp_search/%x_%A_%a.out
 #SBATCH -e slurm_outputs/celeba/hp_search/%x_%A_%a.err
 
@@ -20,7 +20,7 @@ mkdir -p slurm_outputs/celeba/hp_search
 TAU_START_LIST=(9.5 8.5 7.5 6.0)
 TAU_END_LIST=(1.5 2.0 2.5 3.5)
 WARMUP_ITERS_LIST=(100 500)
-LOSS_WEIGHT_LIST=(1.0 2.0 4.0)
+LOSS_WEIGHT_LIST=(2.0 4.0)
 
 # Total combos
 NS=${#TAU_START_LIST[@]}
@@ -47,7 +47,7 @@ TAU_END=${TAU_END_LIST[$j]}
 WARMUP_ITERS=${WARMUP_ITERS_LIST[$k]}
 LOSS_WEIGHT=${LOSS_WEIGHT_LIST[$l]}
 
-RUN_NAME="dinov2_celeba_ours_hp_tauS${TAU_START}_tauE${TAU_END}_wu${WARMUP_ITERS}_lw${LOSS_WEIGHT}"
+RUN_NAME="final_dinov2_celeba_ours_hp_tauS${TAU_START}_tauE${TAU_END}_wu${WARMUP_ITERS}_lw${LOSS_WEIGHT}"
 
 echo "=== Trial ${tid}/${TOTAL} ==="
 echo "tau_start=${TAU_START} tau_end=${TAU_END} warmup_iters=${WARMUP_ITERS} loss_weight=${LOSS_WEIGHT}"

@@ -10,7 +10,7 @@ from torch.distributed import destroy_process_group
 from torchinfo import summary
 import torch.distributed as dist
 
-from data.data_loader import build_dataloaders
+from dinov2.data.datasets.data_loader import build_dataloaders
 from src.helper import build_optimizer, build_schedulers
 from src.ssl_meta_arch import SSLMetaArch
 from src.trainer import Trainer

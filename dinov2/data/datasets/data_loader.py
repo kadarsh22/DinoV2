@@ -9,15 +9,15 @@ from torchvision.datasets import CIFAR10, MNIST, CelebA
 from torchvision.transforms import (
     Compose, Resize, CenterCrop, ToTensor, Normalize, Lambda
 )
-from data.datasets.shapes3d import Shapes3d, make_long_tailed_subset , latent_summary
-from data.datasets.dsprites import DSprites
+from dinov2.data.datasets.shapes3d import Shapes3d, make_long_tailed_subset , latent_summary
+from dinov2.data.datasets.dsprites import DSprites
 from torch.utils.data import DistributedSampler, DataLoader
 from torch.utils.data import random_split
-from data.attributes import AttributeSpec
-from data.loaders import make_data_loader, SamplerType
-from data.augmentations import DataAugmentationDINO, DataAugmentationDINODsprites
-from data.masking import MaskingGenerator
-from data.collate import collate_data_and_cast
+from dinov2.data.attributes import AttributeSpec
+from dinov2.data.loaders import make_data_loader, SamplerType
+from dinov2.data.augmentations import DataAugmentationDINO, DataAugmentationDINODsprites
+from dinov2.data.masking import MaskingGenerator
+from dinov2.data.collate import collate_data_and_cast
 from utils.attribute_dataset import AttributeDataset
 
 
@@ -42,7 +42,6 @@ def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
                 Resize(cfg.crops.global_crops_size),
                 CenterCrop(cfg.crops.global_crops_size),
                 ToTensor(),  # (1, H, W)
-                Lambda(lambda x: x.repeat(3, 1, 1)),  # (3, H, W)
                 Normalize(
                     mean=normalisation_params["mean"],
                     std=normalisation_params["std"],

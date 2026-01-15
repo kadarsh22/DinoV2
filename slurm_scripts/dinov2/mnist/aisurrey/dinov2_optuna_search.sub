@@ -5,9 +5,10 @@
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
-#SBATCH --partition=2080ti
+#SBATCH --partition=2080ti,rtx8000,3090,3090_risk,a100
 #SBATCH --time=24:00:00
-#SBATCH --array=0-63%2
+#SBATCH --array=0-128
+#SBATCH --exclude=aisurrey16
 #SBATCH -o slurm_outputs/cmnist/optuna/%x_%A_%a.out
 #SBATCH -e slurm_outputs/cmnist/optuna/%x_%A_%a.err
 

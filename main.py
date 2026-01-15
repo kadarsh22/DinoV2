@@ -32,8 +32,8 @@ def main(args):
         train_params.train.dataset_path = args.dataset_path
         eval_params = load_yaml(args.eval_fname)
         if trial is not None:
-            train_params.lcal.tau_start = trial.suggest_float("tau_start", 6.0, 9.5)
-            train_params.lcal.tau_end = trial.suggest_float("tau_end", 1.5, 3.5)
+            train_params.lcal.tau_start = trial.suggest_float("tau_start", 5.5, 9.5)
+            train_params.lcal.tau_end = trial.suggest_float("tau_end",2.5, 5.0)
             train_params.lcal.warmup_iterations = trial.suggest_int("warmup_iters", 100, 500, log=False)
             train_params.lcal.loss_weight = trial.suggest_float("loss_weight", 1, 6,
                                                                 log=True)  # change key if different

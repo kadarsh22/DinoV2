@@ -20,7 +20,7 @@ STUDY_NAME="cmnist_hpo"
 STORAGE="optuna_storage/optuna_journal_cmnist.log"
 
 # Make run names unique per array task (W&B friendliness)
-RUN_NAME="celeba_optuna_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+RUN_NAME="cmnist_optuna_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 
 srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
   --standalone --nproc_per_node=1 main.py \

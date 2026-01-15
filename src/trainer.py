@@ -5,6 +5,7 @@ import torch.distributed as dist
 import dinov2.distributed as distributed
 import wandb
 import math
+import optuna
 from dinov2.logging import MetricLogger
 from utils.distributed import is_main_process
 from src.utils.logging import AverageMeter
@@ -62,7 +63,7 @@ class Trainer:
         self.iteration = self.start_iter
 
 
-    def train(self, max_iter: int):
+    def train(self, max_iter: int, trial: optuna.Trial | None = None, prune_after: int = 2000, ):
         header = "Training"
         for data in self.metric_logger.log_every( self.unsupervised_loader, 10, header, max_iter, self.start_iter,):
             current_batch_size = data["collated_global_crops"].shape[0] / 2
@@ -162,13 +163,34 @@ class Trainer:
                 )
                 eval_metrics = evaluator.train_and_eval_probe(self.iteration)
                 eval_metrics["iteration"] = self.iteration
+                metric = eval_metrics['eval/eval_attr_avg_top1']
+                self.best_eval_metric = metric
                 if is_main_process():
                     wandb.log(eval_metrics)
 
-                dist.barrier()
 
+                dist.barrier()
                 backbone_fsdp.train()
                 dist.barrier()
+
+                if trial is None:
+                    continue
+
+                prune_flag = 0
+                if is_main_process():
+                    trial.report(float(metric), step=self.iteration)
+
+                    if self.iteration >= prune_after and trial.should_prune():
+                        prune_flag = 1
+
+
+                if dist.is_available() and dist.is_initialized():
+                    t = torch.tensor([prune_flag], device="cuda", dtype=torch.int32)
+                    dist.broadcast(t, src=0)
+                    prune_flag = int(t.item())
+
+                if prune_flag == 1:
+                    raise optuna.TrialPruned(f"Pruned at iter={self.iteration}, metric={metric}")
 
         # if (epoch + 1) % params['meta']['save_every'] == 0:
         #     trainer._save_snapshot(epoch)

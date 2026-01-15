@@ -17,7 +17,7 @@
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="RUN_TOOL" value="" />
     <option name="SCRIPT_NAME" value="$USER_HOME$/miniconda3/envs/dinov2/bin/torchrun" />
-    <option name="PARAMETERS" value="--standalone --nnodes=1 --nproc_per_node=2 main.py --run_name cmnist_baselined_seed_0 --config_file configs/train/cmnist/vits16.yaml --eval_fname configs/eval/cmnist/eval_dinov2.yaml --dataset cmnist train.seed=0 lcal.loss_weight=0.0" />
+    <option name="PARAMETERS" value="--standalone --nnodes=1 --nproc_per_node=1 main.py --run_name cmnist_baselined_seed_0 --config_file configs/train/cmnist/vits16.yaml --eval_fname configs/eval/cmnist/eval_dinov2.yaml --dataset cmnist train.seed=0 lcal.loss_weight=0.0" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

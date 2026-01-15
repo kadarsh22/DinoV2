@@ -1,0 +1,36 @@
+#!/bin/bash
+#SBATCH --job-name=dino_celeba_optuna
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --gpus-per-task=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64G
+#SBATCH --partition=2080ti
+#SBATCH --time=24:00:00
+#SBATCH --array=0-63%2
+#SBATCH -o slurm_outputs/celeba/optuna/%x_%A_%a.out
+#SBATCH -e slurm_outputs/celeba/optuna/%x_%A_%a.err
+
+set -euo pipefail
+mkdir -p slurm_outputs/celeba/optuna
+
+cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
+
+STUDY_NAME="celeba_hpo"
+STORAGE="optuna_storage/optuna_journal.log"
+
+# Make run names unique per array task (W&B friendliness)
+RUN_NAME="celeba_optuna_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+
+srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
+  --standalone --nproc_per_node=1 main.py \
+  --hpo \
+  --study_name "${STUDY_NAME}" \
+  --storage "${STORAGE}" \
+  --run_name "${RUN_NAME}" \
+  --dataset CelebA \
+  --config_file configs/train/celeba/vits16.yaml \
+  --eval_fname configs/eval/celeba/eval_dinov2.yaml \
+  --output_dir /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/celeba \
+  --dataset_path /mnt/fast/nobackup/users/ak03476/data/celebA \
+  --prune_after 70000

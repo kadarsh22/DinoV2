@@ -32,4 +32,4 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
   --config_file configs/train/cmnist/vits16.yaml \
   --eval_fname configs/eval/cmnist/eval_dinov2.yaml \
   --output_dir /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/cmnist/ \
-  --prune_after 30000
+  --prune_after 35000

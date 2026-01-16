@@ -17,7 +17,7 @@ class Trainer:
     def __init__(self, model, unsupervised_loader, unsupervised_sampler, optimizer,
                       lr_scheduler, wd_scheduler, momentum_schedule,teacher_temp_schedule,last_layer_lr_schedule,
                         fp16_scaler,
-                        probe_train_loader, probe_eval_loader, attributes, train_params, eval_params) -> None:
+                        probe_train_loader, probe_eval_loader, probe_train_sampler, probe_test_sampler,attributes, train_params, eval_params) -> None:
         self.train_params = train_params
         self.eval_params = eval_params
         self.epochs_run = 0
@@ -158,6 +158,8 @@ class Trainer:
                     backbone_fsdp,
                     self.probe_train_loader,
                     self.probe_eval_loader,
+                    self.probe_train_sampler,
+                    self.probe_test_sampler,
                     self.attributes,
                     self.eval_params,
                 )

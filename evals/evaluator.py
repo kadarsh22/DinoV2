@@ -10,11 +10,14 @@ from torch.utils.data import DataLoader, TensorDataset
 from evals.eval_utils import _need_cache, _cleanup_cache_dir, _load_cached
 
 class Evaluator:
-    def __init__(self, target_encoder, probe_train_loader, probe_eval_loader, attributes, params) -> None:
+    def __init__(self, target_encoder, probe_train_loader, probe_eval_loader,probe_train_sampler,
+                    probe_test_sampler, attributes, params) -> None:
         self.params = params
         self.model = target_encoder
         self.train_loader = probe_train_loader
         self.val_loader = probe_eval_loader
+        self.probe_train_sampler = probe_train_sampler
+        self.probe_test_sampler = probe_test_sampler
         self.attributes = attributes
         self.ce = nn.CrossEntropyLoss()
     
@@ -23,17 +26,18 @@ class Evaluator:
         self.epochs_run = 0
 
     def train_and_eval_probe(self, epoch, cache_dir=None, delete_cache: bool = True,) -> Dict[str, float]:
-
+        if self.probe_train_sampler is not None:
+            self.probe_train_sampler.set_epoch(epoch)
         if cache_dir is None:
             base_cache = self.params["meta"]["cache_dir"]
             job_id = os.environ.get("SLURM_JOB_ID") or os.environ.get("SLURM_ARRAY_JOB_ID") or "nojid"
             cache_dir = os.path.join(base_cache, str(job_id))
         os.makedirs(cache_dir, exist_ok=True)
         self.model.eval()
-        probe = self._train_probe(cache_dir)
+        probe = self._train_probe(cache_dir, epoch)
         return self._eval_probe(epoch, probe, cache_dir, delete_cache=delete_cache)
 
-    def _train_probe(self, cache_dir) -> nn.ModuleDict:
+    def _train_probe(self, cache_dir, epoch) -> nn.ModuleDict:
         device = next(self.model.parameters()).device
 
         need = _need_cache(cache_dir, "train") if rank0() else None
@@ -46,10 +50,16 @@ class Evaluator:
             self._extract_and_cache(self.train_loader, device, cache_dir, "train")
 
         x_train, a_train = _load_cached(cache_dir, "train", map_location="cpu")
-
+        gen = torch.Generator()
+        gen.manual_seed(int(self.params["meta"]["seed"]) + epoch)
         train_loader_cached = DataLoader(
             TensorDataset(x_train, a_train),
-            batch_size=self.params['probe']['batch_size'], shuffle=True, drop_last=False, pin_memory=True,)
+            batch_size=self.params['probe']['batch_size'],
+            shuffle=True,
+            generator=gen,
+            num_workers=0,
+            drop_last=False,
+            pin_memory=True,)
 
         probe = nn.ModuleDict({a.name: nn.Linear(self.model.module.embed_dim, a.num_classes) for a in self.attributes}).to(device)
 

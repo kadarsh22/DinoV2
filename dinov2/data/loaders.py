@@ -172,7 +172,6 @@ def _make_sampler(
 
 T = TypeVar("T")
 
-
 def make_data_loader(
     *,
     dataset,
@@ -186,22 +185,13 @@ def make_data_loader(
     drop_last: bool = True,
     persistent_workers: bool = False,
     collate_fn: Optional[Callable[[List[T]], Any]] = None,
+    # NEW:
+    worker_init_fn: Optional[Callable[[int], None]] = None,
+    generator: Optional[torch.Generator] = None,
+    prefetch_factor: Optional[int] = None,
 ):
     """
     Creates a data loader with the specified parameters.
-
-    Args:
-        dataset: A dataset (third party, LaViDa or WebDataset).
-        batch_size: The size of batches to generate.
-        num_workers: The number of workers to use.
-        shuffle: Whether to shuffle samples.
-        seed: The random seed to use.
-        sampler_type: Which sampler to use: EPOCH, INFINITE, SHARDED_INFINITE, SHARDED_INFINITE_NEW, DISTRIBUTED or None.
-        sampler_size: The number of images per epoch (when applicable) or -1 for the entire dataset.
-        sampler_advance: How many samples to skip (when applicable).
-        drop_last: Whether the last non-full batch of data should be dropped.
-        persistent_workers: maintain the workers Dataset instances alive after a dataset has been consumed once.
-        collate_fn: Function that performs batch collation
     """
 
     sampler = _make_sampler(
@@ -214,8 +204,9 @@ def make_data_loader(
     )
 
     logger.info("using PyTorch data loader")
-    data_loader = torch.utils.data.DataLoader(
-        dataset,
+
+    dl_kwargs = dict(
+        dataset=dataset,
         sampler=sampler,
         batch_size=batch_size,
         num_workers=num_workers,
@@ -223,10 +214,17 @@ def make_data_loader(
         drop_last=drop_last,
         persistent_workers=persistent_workers,
         collate_fn=collate_fn,
+        worker_init_fn=worker_init_fn,
+        generator=generator,
     )
+    # prefetch_factor only valid when num_workers > 0
+    if prefetch_factor is not None and num_workers > 0:
+        dl_kwargs["prefetch_factor"] = prefetch_factor
+
+    data_loader = torch.utils.data.DataLoader(**dl_kwargs)
 
     try:
         logger.info(f"# of batches: {len(data_loader):,d}")
-    except TypeError:  # data loader has no length
+    except TypeError:
         logger.info("infinite data loader")
     return data_loader, sampler

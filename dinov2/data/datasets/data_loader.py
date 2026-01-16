@@ -4,11 +4,13 @@ import torchvision
 import torchvision.transforms as T
 from functools import partial
 from torch.utils.data import Subset
-
+import torch.distributed as dist
 from torchvision.datasets import CIFAR10, MNIST, CelebA
 from torchvision.transforms import (
     Compose, Resize, CenterCrop, ToTensor, Normalize, Lambda
 )
+import random
+import numpy as np
 from dinov2.data.datasets.shapes3d import Shapes3d, make_long_tailed_subset , latent_summary
 from dinov2.data.datasets.dsprites import DSprites
 from torch.utils.data import DistributedSampler, DataLoader
@@ -89,7 +91,7 @@ def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
         N = len(dataset_train)
         train_size = int(0.8 * N)
 
-        g = torch.Generator().manual_seed(0)
+        g = torch.Generator().manual_seed(cfg.train.seed)
         perm = torch.randperm(N, generator=g)
 
         train_idx = perm[:train_size].tolist()
@@ -148,7 +150,7 @@ def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
         N = len(dataset_train)
         train_size = int(0.8 * N)
 
-        g = torch.Generator().manual_seed(0)
+        g = torch.Generator().manual_seed(cfg.train.seed)
         perm = torch.randperm(N, generator=g)
 
         train_idx = perm[:train_size].tolist()
@@ -207,15 +209,42 @@ def build_dataloaders(dataset, train_params, eval_params):
     g = torch.Generator().manual_seed(train_params.train.seed)
     probe_train_dataset, probe_test_dataset = random_split(val_dataset, [train_size, test_size], generator=g)
 
-    probe_train_sampler = DistributedSampler(probe_train_dataset, shuffle=True)
-    probe_test_sampler = DistributedSampler(probe_test_dataset, shuffle=False)
-    probe_train_loader = DataLoader(probe_train_dataset, batch_size=eval_params['probe']['batch_size'], drop_last=False,
-                                    sampler=probe_train_sampler, num_workers=eval_params['trainer']['num_workers'],
-                                    pin_memory=True)
-    probe_test_loader = DataLoader(probe_test_dataset, batch_size=eval_params['probe']['batch_size'], shuffle=False,
-                                   drop_last=False,
-                                   sampler=probe_test_sampler, num_workers=eval_params['trainer']['num_workers'],
-                                   pin_memory=True, )
+    rank = dist.get_rank() if dist.is_available() and dist.is_initialized() else 0
+    base_seed = int(train_params.train.seed)
+
+    def seed_worker(worker_id: int):
+        # deterministic, unique per rank + worker
+        s = base_seed + 1000 * rank + worker_id
+        np.random.seed(s)
+        random.seed(s)
+        torch.manual_seed(s)
+
+    gen_probe = torch.Generator().manual_seed(base_seed + 10000 + rank)
+    gen_train = torch.Generator().manual_seed(base_seed + 20000 + rank)
+
+    probe_train_sampler = DistributedSampler(probe_train_dataset, shuffle=True, seed=base_seed)
+    probe_test_sampler = DistributedSampler(probe_test_dataset, shuffle=False, seed=base_seed)
+
+    probe_train_loader = DataLoader(probe_train_dataset,
+                                    batch_size=eval_params['probe']['batch_size'],
+                                    sampler=probe_train_sampler,
+                                    num_workers=eval_params['trainer']['num_workers'],
+                                    pin_memory=True,
+                                    worker_init_fn=seed_worker,
+                                    generator=gen_probe,
+                                    persistent_workers=(eval_params['trainer']['num_workers'] > 0),
+                                    )
+
+    probe_test_loader = DataLoader(
+        probe_test_dataset,
+        batch_size=eval_params['probe']['batch_size'],
+        sampler=probe_test_sampler,
+        num_workers=eval_params['trainer']['num_workers'],
+        pin_memory=True,
+        worker_init_fn=seed_worker,
+        generator=gen_probe,
+        persistent_workers=(eval_params['trainer']['num_workers'] > 0),
+    )
 
     img_size = train_params.crops.global_crops_size
     patch_size = train_params.student.patch_size
@@ -263,11 +292,15 @@ def build_dataloaders(dataset, train_params, eval_params):
         batch_size=train_params.train.batch_size_per_gpu,
         num_workers=train_params.train.num_workers,
         shuffle=True,
-        seed=train_params.train.seed,
+        seed=base_seed,
         sampler_type=sampler_type,
-        sampler_advance=0,  # TODO(qas): fix this -- start_iter * cfg.train.batch_size_per_gpu,
+        sampler_advance=0,
         drop_last=True,
         collate_fn=collate_fn,
+        worker_init_fn=seed_worker,
+        generator=gen_train,
+        persistent_workers=(train_params.train.num_workers > 0),
+        prefetch_factor=2,  # optional; omit if you prefer defaults
     )
 
-    return train_loader, train_sampler, probe_train_loader, probe_test_loader, attributes, normalisation_params
+    return train_loader, train_sampler, probe_train_loader, probe_test_loader, probe_train_sampler, probe_test_sampler, attributes, normalisation_params

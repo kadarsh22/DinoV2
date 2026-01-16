@@ -1,6 +1,7 @@
 tag: dinov2_cmnist_linear_probe
 
 meta:
+  seed: 0
   method_name: dinov2
 #  cache_dir: /vol/research/project_storage/cache
   eval_every: 2000

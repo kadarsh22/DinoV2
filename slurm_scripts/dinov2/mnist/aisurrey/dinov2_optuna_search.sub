@@ -7,7 +7,7 @@
 #SBATCH --mem=64G
 #SBATCH --partition=2080ti,rtx8000,3090,3090_risk,a100
 #SBATCH --time=24:00:00
-#SBATCH --array=0-128
+#SBATCH --array=0-7%4
 #SBATCH --exclude=aisurrey16
 #SBATCH -o slurm_outputs/cmnist/optuna/%x_%A_%a.out
 #SBATCH -e slurm_outputs/cmnist/optuna/%x_%A_%a.err
@@ -16,6 +16,12 @@ set -euo pipefail
 mkdir -p slurm_outputs/cmnist/optuna
 
 cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
+
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+
 
 STUDY_NAME="cmnist_hpo"
 STORAGE="optuna_storage/optuna_journal_cmnist.log"

@@ -51,22 +51,34 @@ def init_distributed(port=40112, rank_and_world_size=(None, None)):
     return world_size, rank
 
 
-def set_seed_custom(seed: int = 32) -> None:
-    if dist.is_available() and dist.is_initialized():
+def set_seed_custom(seed: int = 32) -> int:
+    is_dist = dist.is_available() and dist.is_initialized()
+    rank = dist.get_rank() if is_dist else 0
+
+    # Make seed identical across ranks (what you're doing now)
+    if is_dist:
         seed_tensor = torch.tensor(seed, device="cuda")
         dist.broadcast(seed_tensor, src=0)
-        seed = seed_tensor.item()
+        seed = int(seed_tensor.item())
 
-    os.environ["PYTHONHASHSEED"] = str(seed)     # Set a fixed value for the hash seed
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+
     np.random.seed(seed)
     random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    if dist.get_rank() == 0:
+    torch.use_deterministic_algorithms(True)
+
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+
+    if rank == 0:
         print(f"Random seed set as {seed}")
+
 
 def ddp_setup():
     # torchrun case (local or non-slurm)

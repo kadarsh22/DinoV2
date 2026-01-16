@@ -44,6 +44,8 @@ class Trainer:
         self.momentum_schedule = momentum_schedule
         self.teacher_temp_schedule = teacher_temp_schedule
         self.last_layer_lr_schedule = last_layer_lr_schedule
+        self.probe_train_sampler = probe_train_sampler
+        self.probe_test_sampler = probe_test_sampler
 
         self.probe_train_loader = probe_train_loader
         self.probe_eval_loader = probe_eval_loader

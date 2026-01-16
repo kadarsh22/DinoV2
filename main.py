@@ -111,12 +111,15 @@ def main(args):
         else:
             storage = args.storage
 
+        worker_id = int(os.environ.get("SLURM_ARRAY_TASK_ID", "0"))
+        sampler_seed = int(args.seed) + 10_000 * worker_id  # big spacing avoids overlap
+
         study = optuna.create_study(
             study_name=args.study_name,
             storage=storage,
             load_if_exists=True,
             direction="maximize",
-            sampler=optuna.samplers.TPESampler(seed=args.seed),
+            sampler=optuna.samplers.TPESampler(seed=sampler_seed, constant_liar=True),
             pruner=optuna.pruners.HyperbandPruner(min_resource=args.prune_after, max_resource=max_iter),
         )
 

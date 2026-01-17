@@ -5,8 +5,8 @@
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>
-      <env name="WANDB_IGNORE_GLOBS" value="**/.git/**,**/wandb/**,**/__pycache__/**,**/*.pt,**/*.pth,**/*.ckpt,**/*.npy,**/*.npz,**/*.tar " />
       <env name="PYTHONUNBUFFERED" value="1" />
+      <env name="WANDB_IGNORE_GLOBS" value="**/.git/**,**/wandb/**,**/__pycache__/**,**/*.pt,**/*.pth,**/*.ckpt,**/*.npy,**/*.npz,**/*.tar " />
       <env name="CUDA_VISIBLE_DEVICES" value="1" />
     </envs>
     <option name="SDK_HOME" value="" />
@@ -18,7 +18,7 @@
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="RUN_TOOL" value="" />
     <option name="SCRIPT_NAME" value="$USER_HOME$/miniconda3/envs/dinov2/bin/torchrun" />
-    <option name="PARAMETERS" value="--standalone --nnodes=1 --nproc_per_node=1 main.py --run_name dsprites_baseline --config_file configs/train/dsprites/vits16.yaml --dataset dsprites --eval_fname configs/eval/dsprites/eval_dinov2.yaml --output_dir $PROJECT_DIR$/../../../../scratch4weeks/ak03476/dinov2_outputs/dsprites --dataset_path $USER_HOME$/data/dsprites/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz" />
+    <option name="PARAMETERS" value="--standalone --nnodes=1 --nproc_per_node=1 main.py --run_name dsprites_baseline --config_file configs/train/dsprites/vits16.yaml --dataset dsprites --eval_fname configs/eval/dsprites/eval_dinov2.yaml --output_dir $PROJECT_DIR$/../../../../scratch4weeks/ak03476/dinov2_outputs/dsprites --dataset_path $USER_HOME$/data/dsprites/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz lcal.loss_weight=0" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

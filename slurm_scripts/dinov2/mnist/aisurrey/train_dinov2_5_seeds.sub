@@ -5,7 +5,7 @@
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
-#SBATCH --partition=3090,3090_risk,2080ti
+#SBATCH --partition=2080ti
 #SBATCH --time=24:00:00
 #SBATCH --array=0-4
 #SBATCH -o slurm_outputs/cmnist/ours/%x_%A_%a.out
@@ -17,7 +17,7 @@ mkdir -p slurm_outputs/cmnist/seeds
 # -----------------------------
 # Seeds (edit as you like)
 # -----------------------------
-SEED_LIST=(0 456 999 4590 99)
+SEED_LIST=(123 456 999 4590 32)
 NSEEDS=${#SEED_LIST[@]}
 
 # Guard: array size must match NSEEDS
@@ -35,7 +35,7 @@ echo "seed=${SEED}"
 echo "run_name=${RUN_NAME}"
 
 cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
-export WANDB_RUN_GROUP=cmnist_dinov2_baseline
+export WANDB_RUN_GROUP=cmnist_dinov2_ours
 
 # -----------------------------
 # Launch (single-node torchrun)

@@ -5,9 +5,9 @@
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
-#SBATCH --partition=3090,3090_risk
+#SBATCH --partition=2080ti
 #SBATCH --time=24:00:00
-#SBATCH --array=0-64
+#SBATCH --array=0-64%16
 #SBATCH --exclude=aisurrey16
 #SBATCH -o slurm_outputs/dsprites/optuna/%x_%A_%a.out
 #SBATCH -e slurm_outputs/dsprites/optuna/%x_%A_%a.err

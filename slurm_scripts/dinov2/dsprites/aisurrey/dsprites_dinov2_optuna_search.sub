@@ -1,0 +1,43 @@
+#!/bin/bash
+#SBATCH --job-name=dino_cmnist_optuna
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --gpus-per-task=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64G
+#SBATCH --partition=3090,3090_risk
+#SBATCH --time=24:00:00
+#SBATCH --array=0-64
+#SBATCH --exclude=aisurrey16
+#SBATCH -o slurm_outputs/dsprites/optuna/%x_%A_%a.out
+#SBATCH -e slurm_outputs/dsprites/optuna/%x_%A_%a.err
+
+set -euo pipefail
+mkdir -p slurm_outputs/dsprites/optuna
+
+cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
+
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+
+
+STUDY_NAME="dsprites_hpo"
+STORAGE="optuna_storage/optuna_journal_dsprites.log"
+
+# Make run names unique per array task (W&B friendliness)
+RUN_NAME="dsprites_optuna_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+
+srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
+  --standalone --nproc_per_node=1 main.py \
+  --hpo \
+  --study_name "${STUDY_NAME}" \
+  --storage "${STORAGE}" \
+  --run_name "${RUN_NAME}" \
+  --dataset dsprites \
+  --config_file configs/train/dsprites/vits16.yaml \
+  --eval_fname configs/eval/dsprites/eval_dinov2.yaml \
+  --output_dir /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/dsprites/ \
+  --dataset_path /mnt/fast/nobackup/users/ak03476/data/dsprites/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz
+  --prune_after 35000

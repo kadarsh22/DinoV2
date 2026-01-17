@@ -1,0 +1,27 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%files
+    environment.yml
+
+%environment
+    # set up environment for when using the container
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate dinov2
+    export WANDB_API_KEY=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
+
+%post
+    # base os
+    apt-get update -y
+    apt-get install -y build-essential wget
+
+    # install miniconda
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+    bash Miniconda3-latest-Linux-x86_64.sh -b -f -p /opt/conda
+    rm Miniconda3-latest-Linux-x86_64.sh
+
+    # install conda components - add the packages you need here
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate
+    conda env create -n dinov2 -f environment.yml
+    conda update --all

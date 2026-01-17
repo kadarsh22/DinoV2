@@ -129,7 +129,11 @@ def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
 
         transform_train = None
 
-        dataset_train = DSprites(cfg.train.dataset_path, transform=transform_train)
+        dataset_train = DSprites(cfg.train.dataset_path,
+                                 transform=transform_train,
+                                 nonrepetitive_orientation=True,
+                                 same_orientations_across_shapes=True
+                                 )
         if long_tailed:
             labels_idx_np = dataset_train.labels_idx.cpu().numpy()
             subset_idx = make_long_tailed_subset(
@@ -139,13 +143,19 @@ def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
                 imbalance_ratio=50,
                 head_at_low_index=True, seed=42)
 
-            dataset_train = DSprites(cfg.train.dataset_path, transform=transform_train, indices=subset_idx)
+            dataset_train = DSprites(cfg.train.dataset_path, transform=transform_train, indices=subset_idx,
+                                     nonrepetitive_orientation=True,
+                                     same_orientations_across_shapes=True
+                                     )
 
             factor_names = ["SHAPE", "SIZE", "ORIENTATION", "X-POS", "Y-pos"]  # typical order
             summ = latent_summary(dataset_train, factor_names=factor_names)
 
 
-        dataset_val = DSprites(cfg.train.dataset_path, transform=transform_probe)
+        dataset_val = DSprites(cfg.train.dataset_path, transform=transform_probe,
+                               nonrepetitive_orientation=True,
+                               same_orientations_across_shapes=True
+                               )
 
         N = len(dataset_train)
         train_size = int(0.8 * N)
@@ -162,7 +172,7 @@ def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
         attributes = [
             AttributeSpec("shape", num_classes=3, index=0),
             AttributeSpec("scale", num_classes=6, index=1),
-            AttributeSpec("orientation", num_classes=40, index=2),
+            AttributeSpec("orientation", num_classes=10, index=2),
             AttributeSpec("posX", num_classes=32, index=3),
             AttributeSpec("posY", num_classes=32, index=4),
         ]

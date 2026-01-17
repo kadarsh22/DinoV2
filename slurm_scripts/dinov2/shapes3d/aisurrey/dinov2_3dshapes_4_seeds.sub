@@ -1,0 +1,67 @@
+#!/bin/bash
+#SBATCH --job-name=dino_shapes3d_hp
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-task=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --partition=2080ti
+#SBATCH --time=24:00:00
+#SBATCH --array=0-3
+#SBATCH --exclude=aisurrey16
+#SBATCH -o slurm_outputs/shapes3d/seeds/%x_%A_%a.out
+#SBATCH -e slurm_outputs/shapes3d/seeds/%x_%A_%a.err
+
+set -euo pipefail
+
+# Make sure this directory exists *before* submission
+mkdir -p slurm_outputs/shapes3d/seeds
+
+# -----------------------------
+# Seeds to run
+# -----------------------------
+SEED_LIST=(0 32 123 999)
+NSEEDS=${#SEED_LIST[@]}
+
+# Guard (in case --array doesn't match list length)
+if [[ "${SLURM_ARRAY_TASK_ID}" -ge "${NSEEDS}" ]]; then
+  echo "SLURM_ARRAY_TASK_ID=${SLURM_ARRAY_TASK_ID} >= NSEEDS=${NSEEDS}. Exiting."
+  exit 1
+fi
+
+SEED=${SEED_LIST[$SLURM_ARRAY_TASK_ID]}
+
+# Keep your hyperparams fixed (edit these if you want a single chosen setting)
+TAU_START=2.4
+TAU_END=0.1
+WARMUP_ITERS=200
+
+RUN_NAME="dinov2_shapes3d_baseline_seed${SEED}"
+
+echo "=== Seed trial ${SLURM_ARRAY_TASK_ID}/${NSEEDS} ==="
+echo "seed=${SEED}"
+echo "tau_start=${TAU_START}"
+echo "tau_end=${TAU_END}"
+echo "warmup_iters=${WARMUP_ITERS}"
+echo "run_name=${RUN_NAME}"
+
+cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
+
+# -----------------------------
+# Launch (single-node torchrun)
+# -----------------------------
+srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
+  --standalone \
+  --nproc_per_node=1 \
+  main.py \
+  --run_name "${RUN_NAME}" \
+  --dataset 3dshapes \
+  --config_file configs/train/3dshapes/vits16.yaml \
+  --eval_fname configs/eval/shapes3d/eval_dinov2.yaml \
+  --output_dir /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/shapes3d \
+  --dataset_path /mnt/fast/nobackup/users/ak03476/data/3dshapes/shapes3d.npz \
+  --seed "${SEED}" \
+  lcal.tau_start="${TAU_START}" \
+  lcal.tau_end="${TAU_END}" \
+  lcal.warmup_iterations="${WARMUP_ITERS}" \
+  lcal.loss_weight=0.0

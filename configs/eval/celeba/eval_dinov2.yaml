@@ -5,6 +5,7 @@ meta:
 #  cache_dir: /vol/research/project_storage/cache
   eval_every: 1000
   log_every: 50
+  seed: 0
 #  cache_dir: /leonardo_work/EUHPC_D27_070/cache
   cache_dir: /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/celeba/cache
 

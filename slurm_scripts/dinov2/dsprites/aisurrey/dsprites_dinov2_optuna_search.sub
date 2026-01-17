@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=dino_cmnist_optuna
+#SBATCH --job-name=dino_dsprites_optuna
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gpus-per-task=1
@@ -7,7 +7,7 @@
 #SBATCH --mem=16G
 #SBATCH --partition=3090,3090_risk
 #SBATCH --time=24:00:00
-#SBATCH --array=0-96
+#SBATCH --array=0-64
 #SBATCH --exclude=aisurrey16
 #SBATCH -o slurm_outputs/dsprites/optuna/%x_%A_%a.out
 #SBATCH -e slurm_outputs/dsprites/optuna/%x_%A_%a.err

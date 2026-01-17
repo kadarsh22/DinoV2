@@ -3,11 +3,11 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gpus-per-task=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=16G
 #SBATCH --partition=3090,3090_risk
 #SBATCH --time=24:00:00
-#SBATCH --array=0-64
+#SBATCH --array=0-96
 #SBATCH --exclude=aisurrey16
 #SBATCH -o slurm_outputs/dsprites/optuna/%x_%A_%a.out
 #SBATCH -e slurm_outputs/dsprites/optuna/%x_%A_%a.err
@@ -39,5 +39,5 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
   --config_file configs/train/dsprites/vits16.yaml \
   --eval_fname configs/eval/dsprites/eval_dinov2.yaml \
   --output_dir /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/dsprites/ \
-  --dataset_path /mnt/fast/nobackup/users/ak03476/data/dsprites/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz
+  --dataset_path /mnt/fast/nobackup/users/ak03476/data/dsprites/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz \
   --prune_after 35000

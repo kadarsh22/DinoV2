@@ -16,6 +16,7 @@ lcal:
   tau_end: 3
   warmup_iterations: 100
 train:
+  num_workers: 1
   batch_size_per_gpu: 256
   dataset_path: ImageNet22k
   centering: sinkhorn_knopp

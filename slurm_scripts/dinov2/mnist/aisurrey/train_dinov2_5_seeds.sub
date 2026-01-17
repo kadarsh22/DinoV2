@@ -17,7 +17,7 @@ mkdir -p slurm_outputs/cmnist/seeds
 # -----------------------------
 # Seeds (edit as you like)
 # -----------------------------
-SEED_LIST=(123 456 999 4590 32)
+SEED_LIST=(0 123 999 32)
 NSEEDS=${#SEED_LIST[@]}
 
 # Guard: array size must match NSEEDS
@@ -28,14 +28,14 @@ fi
 
 SEED="${SEED_LIST[$SLURM_ARRAY_TASK_ID]}"
 
-RUN_NAME="dinov2_cmnist_ours_seed${SEED}"
+RUN_NAME="dinov2_cmnist_baseline_seed${SEED}"
 
 echo "=== Seed trial ${SLURM_ARRAY_TASK_ID}/${NSEEDS} ==="
 echo "seed=${SEED}"
 echo "run_name=${RUN_NAME}"
 
 cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
-export WANDB_RUN_GROUP=cmnist_dinov2_ours
+export WANDB_RUN_GROUP=cmnist_dinov2_ours_multiple_seeds
 
 # -----------------------------
 # Launch (single-node torchrun)
@@ -45,10 +45,10 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --stan
   --config_file configs/train/cmnist/vits16.yaml \
   --eval_fname configs/eval/cmnist/eval_dinov2.yaml \
   --dataset cmnist \
-  train.seed="${SEED}" \
-  lcal.tau_start=1.8 \
-  lcal.tau_end=0.5 \
-  lcal.warmup_iterations=50 \
-  lcal.loss_weight=5.0
+  --seed "${SEED}" \
+  lcal.tau_start=6.234970902991114 \
+  lcal.tau_end=4.752734003519656 \
+  lcal.warmup_iterations=147 \
+  lcal.loss_weight=0
 
 

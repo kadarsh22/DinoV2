@@ -4,7 +4,7 @@
 #SBATCH --ntasks=1
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
+#SBATCH --mem=24G
 #SBATCH --partition=2080ti
 #SBATCH --time=24:00:00
 #SBATCH --array=0-64%16
@@ -13,7 +13,7 @@
 #SBATCH -e slurm_outputs/shapes3d/optuna/%x_%A_%a.err
 
 set -euo pipefail
-mkdir -p slurm_outputs/dsprites/optuna
+mkdir -p slurm_outputs/shapes3d/optuna
 
 cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
 
@@ -27,7 +27,7 @@ STUDY_NAME="shapes3d_hpo"
 STORAGE="optuna_storage/optuna_journal_shapes3d.log"
 
 # Make run names unique per array task (W&B friendliness)
-RUN_NAME="dsprites_optuna_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+RUN_NAME="shapes3d_optuna_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 
 srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
   --standalone \
@@ -39,4 +39,4 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
   --eval_fname configs/eval/shapes3d/eval_dinov2.yaml \
   --output_dir /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/shapes3d \
   --dataset_path /mnt/fast/nobackup/users/ak03476/data/3dshapes/shapes3d.npz \
-  --prune_after 35000
+  --prune_after 30000

@@ -44,7 +44,9 @@ class DataAugmentationDINO(object):
         self.geometric_augmentation_global = transforms.Compose(
             [
                 transforms.RandomResizedCrop(
-                    global_crops_size, scale=global_crops_scale, interpolation=transforms.InterpolationMode.BICUBIC
+                    global_crops_size, scale=global_crops_scale,
+                    ratio=(0.95, 1.05),
+                    interpolation=transforms.InterpolationMode.BICUBIC
                 ),
                 # transforms.RandomHorizontalFlip(p=0.5),
             ]
@@ -53,7 +55,8 @@ class DataAugmentationDINO(object):
         self.geometric_augmentation_local = transforms.Compose(
             [
                 transforms.RandomResizedCrop(
-                    local_crops_size, scale=local_crops_scale, interpolation=transforms.InterpolationMode.BICUBIC
+                    local_crops_size, scale=local_crops_scale, interpolation=transforms.InterpolationMode.BICUBIC,
+                    ratio=(0.95, 1.05) ##ratio specifc for shapes3d remove for others
                 ),
                 # transforms.RandomHorizontalFlip(p=0.5),
             ]

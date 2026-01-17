@@ -4,10 +4,11 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=64G
-#SBATCH --partition=3090,3090_risk
+#SBATCH --mem=16G
+#SBATCH --partition=2080ti
 #SBATCH --time=24:00:00
-#SBATCH --array=0-7
+#SBATCH --array=0-3
+#SBATCH --exclude=aisurrey16
 #SBATCH -o slurm_outputs/dsprites/seeds/%x_%A_%a.out
 #SBATCH -e slurm_outputs/dsprites/seeds/%x_%A_%a.err
 
@@ -19,7 +20,7 @@ mkdir -p slurm_outputs/dsprites/seeds
 # -----------------------------
 # Seeds to run
 # -----------------------------
-SEED_LIST=(0 1 2 3 4 5 6 7)
+SEED_LIST=(0 32 123 999)
 NSEEDS=${#SEED_LIST[@]}
 
 # Guard (in case --array doesn't match list length)
@@ -35,7 +36,7 @@ TAU_START=2.4
 TAU_END=0.1
 WARMUP_ITERS=200
 
-RUN_NAME="dinov2_dsprites_ours_seed${SEED}_tauS${TAU_START}_tauE${TAU_END}_wu${WARMUP_ITERS}"
+RUN_NAME="dinov2_dsprites_baseline_seed${SEED}"
 
 echo "=== Seed trial ${SLURM_ARRAY_TASK_ID}/${NSEEDS} ==="
 echo "seed=${SEED}"
@@ -59,7 +60,7 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
   --eval_fname configs/eval/dsprites/eval_dinov2.yaml \
   --output_dir /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/dsprites \
   --dataset_path /mnt/fast/nobackup/users/ak03476/data/dsprites/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz \
-  seed="${SEED}" \
+  --seed "${SEED}" \
   lcal.tau_start="${TAU_START}" \
   lcal.tau_end="${TAU_END}" \
   lcal.warmup_iterations="${WARMUP_ITERS}" \

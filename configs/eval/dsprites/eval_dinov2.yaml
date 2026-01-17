@@ -2,7 +2,7 @@ tag: dinov2_shapes3d_linear_probe
 
 meta:
   method_name: dinov2
-  seed: 123
+  seed: 0
   eval_every: 5000
   log_every: 50
 #  cache_dir: /vol/research/project_storage/cache

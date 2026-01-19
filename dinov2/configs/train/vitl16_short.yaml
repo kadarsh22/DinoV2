@@ -1,6 +1,7 @@
 # this corresponds to the default config
 train:
-  dataset_path: ImageNet:split=TRAIN
+  dataset_path: ImageNet:split=TRAIN:root=/scratch/ak03476/imagenet:extra=/scratch/ak03476/imagenet
+  val_dataset_path: ImageNet:split=VAL:root=/scratch/ak03476/imagenet:extra=/scratch/ak03476/imagenet
   batch_size_per_gpu: 64
 student:
   block_chunks: 4

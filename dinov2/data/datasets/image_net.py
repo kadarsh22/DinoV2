@@ -226,7 +226,7 @@ class ImageNet(ExtendedVisionDataset):
                     old_percent = percent
 
                 actual_index = index + 1
-                class_index = np.uint32(-1)
+                class_index = np.int32(-1).view(np.uint32)
                 class_id, class_name = "", ""
                 entries_array[index] = (actual_index, class_index, class_id, class_name)
         else:

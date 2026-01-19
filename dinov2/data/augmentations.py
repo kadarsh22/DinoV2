@@ -24,6 +24,7 @@ class DataAugmentationDINO(object):
         local_crops_number,
         global_crops_size=224,
         local_crops_size=96,
+        normalisation_params=None,
     ):
         self.global_crops_scale = global_crops_scale
         self.local_crops_scale = local_crops_scale
@@ -85,7 +86,7 @@ class DataAugmentationDINO(object):
         self.normalize = transforms.Compose(
             [
                 transforms.ToTensor(),
-                make_normalize_transform(),
+                make_normalize_transform(normalisation_params),
             ]
         )
 
@@ -185,8 +186,8 @@ class SafeRandomTranslation(torch.nn.Module):
             fillcolor=0,
         )
 
-def make_normalize_transform(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)):
-    return transforms.Normalize(mean=mean, std=std)
+def make_normalize_transform(normalisation_params):
+    return transforms.Normalize(mean=normalisation_params['mean'], std=normalisation_params['std'])
 
 # ---- main augmentation ----
 

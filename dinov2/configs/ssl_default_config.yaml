@@ -70,7 +70,7 @@ train:
   dataset_path: ImageNet:split=TRAIN
   output_dir: .
   saveckp_freq: 20
-  seed: 123
+  seed: 0
   num_workers: 10
   OFFICIAL_EPOCH_LENGTH: 1250
   cache_dataset: true

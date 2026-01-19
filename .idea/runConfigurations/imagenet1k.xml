@@ -1,0 +1,27 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="imagenet1k" type="PythonConfigurationType" factoryName="Python" singleton="false">
+    <module name="DinoV2" />
+    <option name="ENV_FILES" value="" />
+    <option name="INTERPRETER_OPTIONS" value="" />
+    <option name="PARENT_ENVS" value="true" />
+    <envs>
+      <env name="PYTHONUNBUFFERED" value="1" />
+    </envs>
+    <option name="SDK_HOME" value="" />
+    <option name="SDK_NAME" value="dinov2_working" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="IS_MODULE_SDK" value="false" />
+    <option name="ADD_CONTENT_ROOTS" value="true" />
+    <option name="ADD_SOURCE_ROOTS" value="true" />
+    <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+    <option name="RUN_TOOL" value="" />
+    <option name="SCRIPT_NAME" value="/vol/research/project_storage/miniconda3/envs/dinov2_working/bin/torchrun" />
+    <option name="PARAMETERS" value="--standalone --nnodes=1 --nproc_per_node=1 main.py --run_name imagenet1k_baseline --config_file dinov2/configs/train/vitl16_short.yaml --dataset imagenet1k --eval_fname configs/eval/imagenet1k/eval_dinov2.yaml --output_dir /vol/research/project_storage/dino_outputs/imagenet1k --dataset_path ImageNet:split=TRAIN:root=/scratch/ak03476/imagenet:extra=/scratch/ak03476/imagenet" />
+    <option name="SHOW_COMMAND_LINE" value="false" />
+    <option name="EMULATE_TERMINAL" value="false" />
+    <option name="MODULE_MODE" value="false" />
+    <option name="REDIRECT_INPUT" value="false" />
+    <option name="INPUT_FILE" value="" />
+    <method v="2" />
+  </configuration>
+</component>

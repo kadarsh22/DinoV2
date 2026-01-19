@@ -170,6 +170,8 @@ class SSLMetaArch(nn.Module):
             ibot_teacher_patch_tokens = teacher_backbone_output_dict["x_norm_patchtokens"]
             _dim = ibot_teacher_patch_tokens.shape[-1]
             n_cls_tokens = teacher_cls_tokens.shape[0]
+            feature_unnorm_teacher = None
+            feature_unnorm_student = None
 
             if do_ibot and not self.ibot_separate_head:
                 buffer_tensor_teacher = ibot_teacher_patch_tokens.new_zeros(upperbound + n_cls_tokens, _dim)

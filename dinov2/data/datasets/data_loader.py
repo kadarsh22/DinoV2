@@ -9,6 +9,8 @@ from torchvision.datasets import CIFAR10, MNIST, CelebA
 from torchvision.transforms import (
     Compose, Resize, CenterCrop, ToTensor, Normalize, Lambda
 )
+
+from dinov2.data.loaders import make_dataset
 import random
 import numpy as np
 from dinov2.data.datasets.shapes3d import Shapes3d, make_long_tailed_subset , latent_summary
@@ -206,6 +208,32 @@ def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
         val = torchvision.datasets.MNIST(cfg.train.dataset_path, train=False, transform=transform_probe)
         attributes = [AttributeSpec("digit", num_classes=10, index=0)]
         return train, val, 10, attributes, normalisation_params
+
+    elif dataset in {'imagenet1k'}:
+        normalisation_params = {'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]}
+
+        train = make_dataset(dataset_str=cfg.train.dataset_path, transform=None,
+                                     target_transform=lambda _: (),)
+
+        resize_size = 256
+        crop_size = 224
+        interpolation = T.InterpolationMode.BICUBIC
+        transform_probe = Compose(
+            [
+                Resize(resize_size, interpolation=interpolation), ##TODO acutual dino follows random resize and hflip
+                CenterCrop(crop_size),
+                ToTensor(),
+                Normalize(
+                    mean=normalisation_params["mean"],
+                    std=normalisation_params["std"],
+                ),
+            ]
+        )
+
+        val = make_dataset(dataset_str=cfg.train.val_dataset_path, transform=transform_probe,)
+
+        attributes = [AttributeSpec("class", num_classes=1000, index=0)]
+        return train, val, 1000 , attributes, normalisation_params
     else:
         raise NotImplementedError
 
@@ -278,13 +306,14 @@ def build_dataloaders(dataset, train_params, eval_params):
             train_params.crops.local_crops_number,
             global_crops_size=train_params.crops.global_crops_size,
             local_crops_size=train_params.crops.local_crops_size,
+            normalisation_params = normalisation_params,
         )
 
     if isinstance(train_dataset, Subset):
         train_dataset.dataset.transform = data_transform
         train_dataset.dataset.target_transform = lambda _: ()
     else:
-        train_dataset.transform = data_transform
+        train_dataset.transforms.transform = data_transform
         train_dataset.target_transform = lambda _: ()
 
     collate_fn = partial(

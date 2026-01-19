@@ -3,9 +3,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH --partition=3090,3090_risk
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --partition=2080ti
 #SBATCH --time=72:00:00
 #SBATCH -o slurm_outputs/dsprites/%x_%A_%a.out
 #SBATCH -e slurm_outputs/dsprites/%x_%A_%a.err

@@ -7,7 +7,7 @@
 #SBATCH --mem=24G
 #SBATCH --partition=2080ti
 #SBATCH --time=24:00:00
-#SBATCH --array=0-3
+#SBATCH --array=0-4
 #SBATCH --exclude=aisurrey16
 #SBATCH -o slurm_outputs/shapes3d/seeds/%x_%A_%a.out
 #SBATCH -e slurm_outputs/shapes3d/seeds/%x_%A_%a.err
@@ -20,7 +20,7 @@ mkdir -p slurm_outputs/shapes3d/seeds
 # -----------------------------
 # Seeds to run
 # -----------------------------
-SEED_LIST=(0 32 123 999)
+SEED_LIST=(0 32 123 999 743)
 NSEEDS=${#SEED_LIST[@]}
 
 # Guard (in case --array doesn't match list length)
@@ -36,7 +36,7 @@ TAU_START=2.4
 TAU_END=0.1
 WARMUP_ITERS=200
 
-RUN_NAME="dinov2_shapes3d_baseline_seed${SEED}"
+RUN_NAME="dinov2_shapes3d_ours_seed${SEED}"
 
 echo "=== Seed trial ${SLURM_ARRAY_TASK_ID}/${NSEEDS} ==="
 echo "seed=${SEED}"
@@ -61,7 +61,7 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
   --output_dir /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/shapes3d \
   --dataset_path /mnt/fast/nobackup/users/ak03476/data/3dshapes/shapes3d.npz \
   --seed "${SEED}" \
-  lcal.tau_start="${TAU_START}" \
-  lcal.tau_end="${TAU_END}" \
-  lcal.warmup_iterations="${WARMUP_ITERS}" \
-  lcal.loss_weight=0.0
+  lcal.tau_start=6.340760104363492 \
+  lcal.tau_end=2.53462880799002 \
+  lcal.warmup_iterations=213 \
+  lcal.loss_weight=4.93648598668222

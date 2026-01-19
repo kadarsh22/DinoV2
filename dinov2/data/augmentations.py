@@ -44,45 +44,42 @@ class DataAugmentationDINO(object):
         self.geometric_augmentation_global = transforms.Compose(
             [
                 transforms.RandomResizedCrop(
-                    global_crops_size, scale=global_crops_scale,
-                    ratio=(0.95, 1.05),
-                    interpolation=transforms.InterpolationMode.BICUBIC
+                    global_crops_size, scale=global_crops_scale, interpolation=transforms.InterpolationMode.BICUBIC
                 ),
-                # transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomHorizontalFlip(p=0.5),
             ]
         )
 
         self.geometric_augmentation_local = transforms.Compose(
             [
                 transforms.RandomResizedCrop(
-                    local_crops_size, scale=local_crops_scale, interpolation=transforms.InterpolationMode.BICUBIC,
-                    ratio=(0.95, 1.05) ##ratio specifc for shapes3d remove for others
+                    local_crops_size, scale=local_crops_scale, interpolation=transforms.InterpolationMode.BICUBIC
                 ),
-                # transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomHorizontalFlip(p=0.5),
             ]
         )
 
         # color distorsions / blurring
-        # color_jittering = transforms.Compose(
-        #     [
-        #         transforms.RandomApply(
-        #             [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
-        #             p=0.8,
-        #         ),
-        #         transforms.RandomGrayscale(p=0.2),
-        #     ]
-        # )
-        #
-        # global_transfo1_extra = GaussianBlur(p=1.0)
-        #
-        # global_transfo2_extra = transforms.Compose(
-        #     [
-        #         GaussianBlur(p=0.1),
-        #         transforms.RandomSolarize(threshold=128, p=0.2),
-        #     ]
-        # )
-        #
-        # local_transfo_extra = GaussianBlur(p=0.5)
+        color_jittering = transforms.Compose(
+            [
+                transforms.RandomApply(
+                    [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
+                    p=0.8,
+                ),
+                transforms.RandomGrayscale(p=0.2),
+            ]
+        )
+
+        global_transfo1_extra = GaussianBlur(p=1.0)
+
+        global_transfo2_extra = transforms.Compose(
+            [
+                GaussianBlur(p=0.1),
+                transforms.RandomSolarize(threshold=128, p=0.2),
+            ]
+        )
+
+        local_transfo_extra = GaussianBlur(p=0.5)
 
         # normalization
         self.normalize = transforms.Compose(
@@ -92,13 +89,13 @@ class DataAugmentationDINO(object):
             ]
         )
 
-        # self.global_transfo1 = transforms.Compose([color_jittering, global_transfo1_extra, self.normalize])
-        # self.global_transfo2 = transforms.Compose([color_jittering, global_transfo2_extra, self.normalize])
-        # self.local_transfo = transforms.Compose([color_jittering, local_transfo_extra, self.normalize])
+        self.global_transfo1 = transforms.Compose([color_jittering, global_transfo1_extra, self.normalize])
+        self.global_transfo2 = transforms.Compose([color_jittering, global_transfo2_extra, self.normalize])
+        self.local_transfo = transforms.Compose([color_jittering, local_transfo_extra, self.normalize])
 
-        self.global_transfo1 = transforms.Compose([self.normalize])
-        self.global_transfo2 = transforms.Compose([self.normalize])
-        self.local_transfo = transforms.Compose([self.normalize])
+        # self.global_transfo1 = transforms.Compose([self.normalize])
+        # self.global_transfo2 = transforms.Compose([self.normalize])
+        # self.local_transfo = transforms.Compose([self.normalize])
 
     def __call__(self, image):
         output = {}
@@ -208,8 +205,8 @@ class DataAugmentationDINODsprites:
         local_crops_number=6,
         global_scale=(0.8, 1.0),
         local_scale=(0.5, 0.8),
-        translation_p=0.8,
-        translation_max_frac=0.08,
+        translation_p=0.0,
+        translation_max_frac=0.00,
         noise_p=0.5,
         noise_sigma=0.02,
         rotation_p=0.0,

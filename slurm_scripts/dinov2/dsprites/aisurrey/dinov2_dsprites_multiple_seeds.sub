@@ -36,7 +36,7 @@ TAU_START=2.4
 TAU_END=0.1
 WARMUP_ITERS=200
 
-RUN_NAME="dinov2_dsprites_baseline_seed${SEED}"
+RUN_NAME="no_translate_dinov2_dsprites_baseline_seed${SEED}"
 
 echo "=== Seed trial ${SLURM_ARRAY_TASK_ID}/${NSEEDS} ==="
 echo "seed=${SEED}"

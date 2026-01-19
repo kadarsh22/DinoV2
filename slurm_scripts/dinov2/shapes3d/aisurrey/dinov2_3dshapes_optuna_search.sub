@@ -33,7 +33,10 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
   --standalone \
   --nproc_per_node=1 \
   main.py \
+  --hpo \
   --run_name "${RUN_NAME}" \
+  --study_name "${STUDY_NAME}" \
+  --storage "${STORAGE}" \
   --dataset 3dshapes \
   --config_file configs/train/3dshapes/vits16.yaml \
   --eval_fname configs/eval/shapes3d/eval_dinov2.yaml \

@@ -5,8 +5,9 @@ ibot:
   separate_head: true
   head_n_prototypes: 131072
 train:
+  dataset_path: ImageNet:split=TRAIN:root=/scratch/ak03476/imagenet:extra=/scratch/ak03476/imagenet
+  val_dataset_path: ImageNet:split=VAL:root=/scratch/ak03476/imagenet:extra=/scratch/ak03476/imagenet
   batch_size_per_gpu: 32
-  dataset_path: ImageNet22k
   centering: sinkhorn_knopp
 student:
   arch: vit_large

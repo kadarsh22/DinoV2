@@ -6,6 +6,8 @@ import dinov2.distributed as distributed
 import wandb
 import math
 import optuna
+from dinov2.fsdp import FSDPCheckpointer
+from fvcore.common.checkpoint import PeriodicCheckpointer
 from dinov2.logging import MetricLogger
 from utils.distributed import is_main_process
 from src.utils.logging import AverageMeter
@@ -63,6 +65,15 @@ class Trainer:
         self.metric_logger = MetricLogger(delimiter="  ", output_file=metrics_file)
         self.start_iter = 0
         self.iteration = self.start_iter
+
+        self.checkpointer = FSDPCheckpointer(model, self.train_params.train.output_dir, optimizer=self.optimizer,
+                                             save_to_disk=True)
+        self.periodic_checkpointer = PeriodicCheckpointer(
+            self.checkpointer,
+            period=3 * OFFICIAL_EPOCH_LENGTH,
+            max_iter=self.max_iter,
+            max_to_keep=3,
+        )
 
 
     def train(self, max_iter: int, trial: optuna.Trial | None = None, prune_after: int = 2000, ):
@@ -151,9 +162,12 @@ class Trainer:
 
             if self.iteration % self.eval_params['meta']['eval_every'] == 0:
 
+                self.do_test(self.model, f"training_{self.iteration}")
+                torch.cuda.synchronize()
+
                 dist.barrier()
 
-                backbone_fsdp = self.model.student.backbone  # or self.model.teacher.backbone
+                backbone_fsdp = self.model.teacher.backbone  # or self.model.teacher.backbone
                 backbone_fsdp.eval()
 
                 evaluator = Evaluator(
@@ -172,7 +186,7 @@ class Trainer:
                 if is_main_process():
                     wandb.log(eval_metrics)
 
-
+                self.periodic_checkpointer.step(self.iteration)
                 dist.barrier()
                 backbone_fsdp.train()
                 dist.barrier()
@@ -198,6 +212,17 @@ class Trainer:
 
         # if (epoch + 1) % params['meta']['save_every'] == 0:
         #     trainer._save_snapshot(epoch)
+
+    def do_test(self,model, iteration):
+        new_state_dict = model.teacher.state_dict()
+
+        if distributed.is_main_process():
+            iterstring = str(iteration)
+            eval_dir = os.path.join(self.train_params.train.output_dir, "eval", iterstring)
+            os.makedirs(eval_dir, exist_ok=True)
+            # save teacher checkpoint
+            teacher_ckp_path = os.path.join(eval_dir, "teacher_checkpoint.pth")
+            torch.save({"teacher": new_state_dict}, teacher_ckp_path)
 
     def apply_optim_scheduler(self, lr, wd, last_layer_lr):
         for param_group in self.optimizer.param_groups:

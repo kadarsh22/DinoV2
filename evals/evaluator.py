@@ -74,7 +74,7 @@ class Evaluator:
                 loss = torch.zeros((), device=device)
                 for spec in self.attributes:
                     logits = probe[spec.name](emb)
-                    loss = loss + self.ce(logits, labels[:, spec.index])
+                    loss = loss + self.ce(logits, labels[:, spec.index].view(-1))
 
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
@@ -115,7 +115,7 @@ class Evaluator:
                 # same note as train: assumes labels match each head
                 scores = probe[spec.name](emb)
                 pred1 = scores.argmax(dim=1)
-                correct1[spec.name] += int((pred1 == labels[:, spec.index]).sum().item())
+                correct1[spec.name] += int((pred1 == labels[:, spec.index].view(-1)).sum().item())
 
                 if self.params['probe']['log_top5']:
                     k = min(5, spec.num_classes)

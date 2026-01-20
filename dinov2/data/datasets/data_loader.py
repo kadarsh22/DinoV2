@@ -180,7 +180,7 @@ def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
         return train, val, 10, attributes, normalisation_params
 
     elif dataset in {'CelebA'}:
-        normalisation_params = {'mean': [0.5, 0.5, 0.5], 'std': [0.5, 0.5, 0.5]}
+        normalisation_params = {'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]}
         transform_probe = T.Compose(
             [T.Resize(cfg.crops.global_crops_size), T.CenterCrop(cfg.crops.global_crops_size), T.ToTensor(),
              T.Normalize(mean=normalisation_params['mean'], std=normalisation_params['std']), ])
@@ -278,6 +278,7 @@ def build_dataloaders(dataset, train_params, eval_params):
             train_params.crops.local_crops_number,
             global_crops_size=train_params.crops.global_crops_size,
             local_crops_size=train_params.crops.local_crops_size,
+            normalisation_params = normalisation_params,
         )
 
     if isinstance(train_dataset, Subset):

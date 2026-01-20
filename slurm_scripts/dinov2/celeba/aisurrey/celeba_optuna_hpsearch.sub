@@ -1,36 +1,42 @@
 #!/bin/bash
-#SBATCH --job-name=dino_celeba_optuna
+#SBATCH --job-name=flux_hp
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=24G
-#SBATCH --partition=2080ti
+#SBATCH --partition=3090,3090_risk
 #SBATCH --time=24:00:00
 #SBATCH --array=0-63%16
+#SBATCH --exclude=aisurrey16
 #SBATCH -o slurm_outputs/celeba/optuna/%x_%A_%a.out
 #SBATCH -e slurm_outputs/celeba/optuna/%x_%A_%a.err
 
 set -euo pipefail
 mkdir -p slurm_outputs/celeba/optuna
 
-cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
+PROJ="/mnt/fast/nobackup/scratch4weeks/sv00592/DinoV2"
+IMG="/mnt/fast/nobackup/scratch4weeks/sv00592/apptainer/dinov2.sif"
+OUT="/mnt/fast/nobackup/scratch4weeks/sv00592/dinov2_outputs/celeba"
+DATA="/mnt/fast/nobackup/scratch4weeks/sv00592/celebA"
 
 STUDY_NAME="celeba_hpo"
-STORAGE="optuna_storage/optuna_journal_celeba_new.log"
-
-# Make run names unique per array task (W&B friendliness)
+STORAGE="${PROJ}/optuna_storage/optuna_journal_celeba_new.log"
 RUN_NAME="celeba_optuna_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+export WANDB_API_KEY=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
 
-srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
-  --standalone --nproc_per_node=1 main.py \
-  --hpo \
-  --study_name "${STUDY_NAME}" \
-  --storage "${STORAGE}" \
-  --run_name "${RUN_NAME}" \
-  --dataset CelebA \
-  --config_file configs/train/celeba/vits16.yaml \
-  --eval_fname configs/eval/celeba/eval_dinov2.yaml \
-  --output_dir /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/celeba \
-  --dataset_path /mnt/fast/nobackup/users/ak03476/data/celebA \
-  --prune_after 80000
+
+BIND_OPTS="--bind ${PROJ}:${PROJ},${OUT}:${OUT},${DATA}:${DATA}"
+
+srun singularity exec --nv ${BIND_OPTS} --pwd "${PROJ}" "${IMG}" \
+  torchrun --standalone --nproc_per_node=1 main.py \
+    --hpo \
+    --study_name "${STUDY_NAME}" \
+    --storage "${STORAGE}" \
+    --run_name "${RUN_NAME}" \
+    --dataset CelebA \
+    --config_file configs/train/celeba/vits16.yaml \
+    --eval_fname configs/eval/celeba/eval_dinov2.yaml \
+    --output_dir "${OUT}" \
+    --dataset_path "${DATA}" \
+    --prune_after 50000

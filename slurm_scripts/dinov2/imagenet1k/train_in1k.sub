@@ -49,6 +49,7 @@ srun --kill-on-bad-exit=1 singularity exec --nv $BIND "$IMG" \
     --rdzv_id="${SLURM_JOB_ID}" \
     main.py \
   --run_name "${RUN_NAME}" \
+  --seed 0 \
   --config_file configs/train/vitl16_short.yaml \
   --dataset imagenet1k \
   --eval_fname configs/eval/imagenet1k/eval_dinov2.yaml \

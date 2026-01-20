@@ -1,6 +1,7 @@
 # this corresponds to the default config
 train:
-  dataset_path: ImageNet:split=TRAIN
+  dataset_path: ImageNet:split=TRAIN:root=/leonardo_work/EUHPC_D27_070/data/imagenet1k/imagenet:extra=/leonardo_work/EUHPC_D27_070/data/imagenet1k/imagenet
+  val_dataset_path: ImageNet:split=VAL:root=/leonardo_work/EUHPC_D27_070/data/imagenet1k/imagenet:extra=/leonardo_work/EUHPC_D27_070/data/imagenet1k/imagenet
   batch_size_per_gpu: 64
 student:
   block_chunks: 4

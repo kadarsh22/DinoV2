@@ -3,7 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gpus-per-task=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=6
 #SBATCH --mem=24G
 #SBATCH --partition=2080ti
 #SBATCH --time=24:00:00
@@ -17,7 +17,7 @@ mkdir -p slurm_outputs/celeba/optuna
 cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
 
 STUDY_NAME="celeba_hpo"
-STORAGE="optuna_storage/optuna_journal_celeba.log"
+STORAGE="optuna_storage/optuna_journal_celeba_new.log"
 
 # Make run names unique per array task (W&B friendliness)
 RUN_NAME="celeba_optuna_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"

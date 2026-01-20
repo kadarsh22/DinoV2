@@ -1,16 +1,16 @@
 #!/bin/bash
-#SBATCH --job-name=dino_celeba_seed5
+#SBATCH --job-name=dino_baseline_4
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH --partition=3090,3090_risk,a100
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=24G
+#SBATCH --partition=2080ti
 #SBATCH --exclude=aisurrey16
 #SBATCH --time=72:00:00
 #SBATCH --array=0-4
-#SBATCH -o slurm_outputs/celeba/seeds/%x_%A_%a.out
-#SBATCH -e slurm_outputs/celeba/seeds/%x_%A_%a.err
+#SBATCH -o slurm_outputs/celeba/baseline/%x_%A_%a.out
+#SBATCH -e slurm_outputs/celeba/baseline/%x_%A_%a.err
 
 set -euo pipefail
 mkdir -p slurm_outputs/celeba/seeds
@@ -18,7 +18,7 @@ mkdir -p slurm_outputs/celeba/seeds
 # -----------------------------
 # 5 random seeds
 # -----------------------------
-SEED_LIST=(0 123 829 99 456)
+SEED_LIST=(0 123 32 999 456)
 N=${#SEED_LIST[@]}
 
 tid=${SLURM_ARRAY_TASK_ID}
@@ -31,7 +31,7 @@ SEED="${SEED_LIST[$tid]}"
 
 cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
 
-RUN_NAME="celeba_dinov2_ours_seed${SEED}"
+RUN_NAME="celeba_dinov2_baseline_seed${SEED}"
 
 echo "=== Seed run ${tid}/${N} ==="
 echo "seed=${SEED}"
@@ -45,8 +45,8 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
   --eval_fname configs/eval/celeba/eval_dinov2.yaml \
   --output_dir /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/celeba \
   --dataset_path /mnt/fast/nobackup/users/ak03476/data/celebA \
-  train.seed="${SEED}" \
+  --seed "${SEED}" \
   lcal.tau_start=8.5 \
   lcal.tau_end=3.5 \
   lcal.warmup_iterations=100 \
-  lcal.loss_weight=1.0
+  lcal.loss_weight=0.0

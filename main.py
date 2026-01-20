@@ -40,8 +40,6 @@ def main(args):
                 train_params.lcal.tau_start = trial.suggest_float("tau_start", 5.5, 8)
                 train_params.lcal.tau_end = trial.suggest_float("tau_end",1.5, 4.5)
                 train_params.lcal.warmup_iterations = trial.suggest_int("warmup_iters", 10, 500, log=False)
-                train_params.lcal.loss_weight = trial.suggest_float("loss_weight", 1, 6,
-                                                                    log=True)  # change key if different
 
             if is_main_process():
                 pprint.pprint(eval_params)

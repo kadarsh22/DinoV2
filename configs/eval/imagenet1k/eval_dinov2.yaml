@@ -2,8 +2,8 @@ tag: dinov2_shapes3d_linear_probe
 
 meta:
   method_name: dinov2
-  cache_dir: /vol/research/project_storage/cache
-  eval_every: 2500
+  cache_dir: /vol/research/project_storage/cache/imagenet1k
+  eval_every: 50
   log_every: 50
   seed: 0
 #  cache_dir: /leonardo_work/EUHPC_D27_070/cache

@@ -232,7 +232,7 @@ def _infer_dataset(dataset, cfg: Dict[str, Any], long_tailed=False) -> Union[
 
         val = make_dataset(dataset_str=cfg.train.val_dataset_path, transform=transform_probe,)
 
-        attributes = [AttributeSpec("class", num_classes=1000, index=0)]
+        attributes = [AttributeSpec("class", num_classes=1000, index=None)]
         return train, val, 1000 , attributes, normalisation_params
     else:
         raise NotImplementedError

@@ -2,7 +2,7 @@ tag: dinov2_in1k_linear_probe
 
 meta:
   method_name: dinov2
-  eval_every: 50
+  eval_every: 10000
   log_every: 500
   seed: 0
   cache_dir: /leonardo_work/EUHPC_D27_070/cache

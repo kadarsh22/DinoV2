@@ -78,7 +78,7 @@ class Trainer:
 
     def train(self, max_iter: int, trial: optuna.Trial | None = None, prune_after: int = 2000, ):
         header = "Training"
-        for data in self.metric_logger.log_every( self.unsupervised_loader, 10, header, max_iter, self.start_iter,):
+        for data in self.metric_logger.log_every( self.unsupervised_loader, 100, header, max_iter, self.start_iter,):
             current_batch_size = data["collated_global_crops"].shape[0] / 2
             if self.iteration > max_iter:
                 return

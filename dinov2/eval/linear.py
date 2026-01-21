@@ -340,7 +340,7 @@ def eval_linear(
     header = "Training"
 
     for data, labels in metric_logger.log_every(
-        train_data_loader,
+        train_data_loader[0],
         10,
         header,
         max_iter,

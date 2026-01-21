@@ -34,7 +34,7 @@ export SINGULARITYENV_SLURM_JOB_ID="${SLURM_JOB_ID}"
 export SINGULARITYENV_SLURM_ARRAY_JOB_ID="${SLURM_ARRAY_JOB_ID:-}"
 export SINGULARITYENV_SLURM_ARRAY_TASK_ID="${SLURM_ARRAY_TASK_ID:-}"
 
-RUN_NAME="imagenet1k_dinov2_hp_search"
+RUN_NAME="in1k_dinov2_hpo_A${SLURM_ARRAY_JOB_ID}_a${SLURM_ARRAY_TASK_ID}"
 
 IMG=/leonardo_work/EUHPC_D27_070/apptainer/dinov2.sif
 BIND="--bind /leonardo_work:/leonardo_work:rw"
@@ -55,9 +55,10 @@ srun --kill-on-bad-exit=1 singularity exec --nv $BIND "$IMG" \
   --study_name "${STUDY_NAME}" \
   --storage "${STORAGE}" \
   --run_name "${RUN_NAME}" \
+  --seed 0 \
   --config_file configs/train/vitl16_short.yaml \
   --dataset imagenet1k \
   --eval_fname configs/eval/imagenet1k/eval_dinov2.yaml \
-  --output_dir /leonardo_work/EUHPC_D27_070/checkpoints/dinov2_imagenet1k \
+  --output_dir /leonardo_work/EUHPC_D27_070/checkpoints/dinov2_imagenet1k//hpo_${SLURM_ARRAY_JOB_ID}/${SLURM_ARRAY_TASK_ID} \
   --dataset_path ImageNet:split=TRAIN:root=/leonardo_work/EUHPC_D27_070/data/imagenet1k/imagenet:extra=/leonardo_work/EUHPC_D27_070/data/imagenet1k/imagenet \
-  --prune_after 80000
+  --prune_after 30000

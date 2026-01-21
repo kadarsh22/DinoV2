@@ -8,7 +8,7 @@
 #SBATCH --partition=3090,3090_risk
 #SBATCH --time=24:00:00
 #SBATCH --array=0-63%16
-#SBATCH --exclude=aisurrey16
+#SBATCH --exclude=aisurrey16,aisurrey18,aisurrey19
 #SBATCH -o slurm_outputs/celeba/optuna/%x_%A_%a.out
 #SBATCH -e slurm_outputs/celeba/optuna/%x_%A_%a.err
 

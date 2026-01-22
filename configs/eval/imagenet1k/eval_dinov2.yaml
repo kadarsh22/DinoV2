@@ -2,8 +2,9 @@ tag: dinov2_in1k_linear_probe
 
 meta:
   method_name: dinov2
-  eval_every: 10000
+  eval_every: 10
   log_every: 500
+  ckpt_wait_timeout_s: 600
   seed: 0
   cache_dir: /leonardo_work/EUHPC_D27_070/cache
 #  cache_dir: /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/celeba/cache

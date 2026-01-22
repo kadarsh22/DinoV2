@@ -5,8 +5,8 @@ ibot:
   separate_head: true
   head_n_prototypes: 131072
 train:
-  dataset_path: ImageNet:split=TRAIN:root=/scratch/ak03476/imagenet:extra=/scratch/ak03476/imagenet
-  val_dataset_path: ImageNet:split=VAL:root=/scratch/ak03476/imagenet:extra=/scratch/ak03476/imagenet
+  dataset_path: ImageNet:split=TRAIN:root=/mnt/fast/datasets/still/ImageNet/ILSVRC2012:extra=/mnt/fast/nobackup/scratch4weeks/ak03476/data/imagenet
+  val_dataset_path: ImageNet:split=VAL:root=/mnt/fast/datasets/still/ImageNet/ILSVRC2012:extra=/mnt/fast/nobackup/scratch4weeks/ak03476/data/imagenet
   batch_size_per_gpu: 32
   centering: sinkhorn_knopp
 student:

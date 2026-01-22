@@ -166,51 +166,34 @@ class Trainer:
 
             if self.iteration % self.eval_params['meta']['eval_every'] == 0:
 
-                ckpt_path = self.do_test(self.model, f"training_{self.iteration}")
-                ckpt_path = Path(ckpt_path)
+                self.do_test(self.model, f"training_{self.iteration}")
+                torch.cuda.synchronize()
 
-                if dist.is_available() and dist.is_initialized():
-                    dist.barrier()
+                dist.barrier()
 
-                if self.global_rank == 0:
+                backbone_fsdp = self.model.teacher.backbone  # or self.model.teacher.backbone
+                backbone_fsdp.eval()
 
-                    timeout_s = int(self.eval_params["meta"].get("ckpt_wait_timeout_s", 600))
-                    t0 = time.time()
-                    while not ckpt_path.exists():
-                        if time.time() - t0 > timeout_s:
-                            raise RuntimeError(f"Timed out waiting for checkpoint: {ckpt_path}")
-                        time.sleep(2)
+                evaluator = Evaluator(
+                    backbone_fsdp,
+                    self.probe_train_loader,
+                    self.probe_eval_loader,
+                    self.probe_train_sampler,
+                    self.probe_test_sampler,
+                    self.attributes,
+                    self.eval_params,
+                )
+                eval_metrics = evaluator.train_and_eval_probe(self.iteration)
+                eval_metrics["iteration"] = self.iteration
+                metric = eval_metrics['eval/eval_attr_avg_top1']
+                self.best_eval_metric = metric
+                if is_main_process():
+                    wandb.log(eval_metrics)
 
-                    env = os.environ.copy()
-                    for k in list(env.keys()):
-                        if k in {"RANK", "WORLD_SIZE", "LOCAL_RANK", "LOCAL_WORLD_SIZE",
-                                 "MASTER_ADDR", "MASTER_PORT", "GROUP_RANK", "ROLE_RANK", "ROLE_WORLD_SIZE"} \
-                                or k.startswith(("TORCHELASTIC_", "SLURM_", "OMPI_", "PMI_", "MV2_")):
-                            env.pop(k, None)
 
-                    # DON'T add RANK/WORLD_SIZE back.
-                    env["PYTHONPATH"] = env.get("PYTHONPATH") or "."
-
-                    base_out = Path(self.train_params["train"]["output_dir"])
-                    train_ds = self.train_params['train']['dataset_path']
-                    val_ds = self.train_params['train']['val_dataset_path']
-                    eval_out_dir = base_out / "linear_eval" / f"training_{self.iteration}"
-                    eval_out_dir.mkdir(parents=True, exist_ok=True)
-
-                    cmd = [
-                        sys.executable, "-m", "dinov2.eval.linear",
-                        "--config-file", "configs/eval/imagenet1k/eval_dinov2.yaml",
-                        "--pretrained-weights", str(ckpt_path),
-                        "--output-dir", str(eval_out_dir),
-                        "--train-dataset", train_ds,
-                        "--val-dataset", val_ds,
-                    ]
-
-                    metric = subprocess.run(cmd, env=env, check=True)
-
-                if dist.is_available() and dist.is_initialized():
-                    dist.barrier()
-
+                dist.barrier()
+                backbone_fsdp.train()
+                dist.barrier()
 
                 if trial is None:
                     continue

@@ -66,12 +66,55 @@ class DINOHeadWithVerifier(nn.Module):
         self.last_layer.weight_g.data.fill_(1.0)
 
         v_in = bottleneck_dim * (2 if use_pos_in_verifier else 1)
+        # self.verifier = nn.Sequential(
+        #     nn.LayerNorm(v_in),
+        #     nn.Linear(v_in, verifier_hidden_mult * bottleneck_dim), nn.GELU(),
+        #     nn.Linear(verifier_hidden_mult * bottleneck_dim, bottleneck_dim), nn.GELU(),
+        #     nn.Linear(bottleneck_dim, 1),
+        # )
+
+        # Variant 1: Shallow (2 layers)
         self.verifier = nn.Sequential(
             nn.LayerNorm(v_in),
-            nn.Linear(v_in, verifier_hidden_mult * bottleneck_dim), nn.GELU(),
-            nn.Linear(verifier_hidden_mult * bottleneck_dim, bottleneck_dim), nn.GELU(),
+            nn.Linear(v_in, bottleneck_dim),
+            nn.GELU(),
             nn.Linear(bottleneck_dim, 1),
         )
+
+        # Variant 2: Medium (3 layers) - Original
+        # self.verifier_medium = nn.Sequential(
+        #     nn.LayerNorm(v_in),
+        #     nn.Linear(v_in, verifier_hidden_mult * bottleneck_dim),
+        #     nn.GELU(),
+        #     nn.Linear(verifier_hidden_mult * bottleneck_dim, bottleneck_dim),
+        #     nn.GELU(),
+        #     nn.Linear(bottleneck_dim, 1),
+        # )
+
+        # Variant 3: Deep (4 layers)
+        # self.verifier_deep = nn.Sequential(
+        #     nn.LayerNorm(v_in),
+        #     nn.Linear(v_in, verifier_hidden_mult * bottleneck_dim),
+        #     nn.GELU(),
+        #     nn.Linear(verifier_hidden_mult * bottleneck_dim, verifier_hidden_mult * bottleneck_dim),
+        #     nn.GELU(),
+        #     nn.Linear(verifier_hidden_mult * bottleneck_dim, bottleneck_dim),
+        #     nn.GELU(),
+        #     nn.Linear(bottleneck_dim, 1),
+        # )
+
+        # self.verifier_very_deep = nn.Sequential(
+        #     nn.LayerNorm(v_in),
+        #     nn.Linear(v_in, 2 * verifier_hidden_mult * bottleneck_dim),
+        #     nn.GELU(),
+        #     nn.Linear(2 * verifier_hidden_mult * bottleneck_dim, verifier_hidden_mult * bottleneck_dim),
+        #     nn.GELU(),
+        #     nn.Linear(verifier_hidden_mult * bottleneck_dim, bottleneck_dim),
+        #     nn.GELU(),
+        #     nn.Linear(bottleneck_dim, bottleneck_dim // 2),
+        #     nn.GELU(),
+        #     nn.Linear(bottleneck_dim // 2, 1),
+        # )
 
         self.apply(self._init_weights)
 

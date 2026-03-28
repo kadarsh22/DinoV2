@@ -1,3 +1,5 @@
 wandb/*
 *.pyc
 slurm_outputs/*
+optuna_storage/*
+dinov2.sif

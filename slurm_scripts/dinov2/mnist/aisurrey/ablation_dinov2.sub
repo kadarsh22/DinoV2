@@ -1,0 +1,54 @@
+#!/bin/bash
+#SBATCH --job-name=dino_cmnist_seed
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-task=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64G
+#SBATCH --partition=2080ti
+#SBATCH --time=24:00:00
+#SBATCH --array=0
+#SBATCH -o slurm_outputs/cmnist/ours/%x_%A_%a.out
+#SBATCH -e slurm_outputs/cmnist/ours/%x_%A_%a.err
+
+set -euo pipefail
+mkdir -p slurm_outputs/cmnist/seeds
+
+# -----------------------------
+# Seeds (edit as you like)
+# -----------------------------
+SEED_LIST=(0)
+NSEEDS=${#SEED_LIST[@]}
+
+# Guard: array size must match NSEEDS
+if [[ "${SLURM_ARRAY_TASK_ID}" -ge "${NSEEDS}" ]]; then
+  echo "SLURM_ARRAY_TASK_ID=${SLURM_ARRAY_TASK_ID} >= NSEEDS=${NSEEDS}. Exiting."
+  exit 1
+fi
+
+SEED="${SEED_LIST[$SLURM_ARRAY_TASK_ID]}"
+
+RUN_NAME="dinov2_cmnist_ours_ablation_capacity_shallow_${SEED}"
+
+echo "=== Seed trial ${SLURM_ARRAY_TASK_ID}/${NSEEDS} ==="
+echo "seed=${SEED}"
+echo "run_name=${RUN_NAME}"
+
+cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
+export WANDB_RUN_GROUP=cmnist_dinov2_ablation
+
+# -----------------------------
+# Launch (single-node torchrun)
+# -----------------------------
+srun --cpu-bind=none /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --standalone --nproc_per_node=1 main.py \
+  --run_name "${RUN_NAME}" \
+  --config_file configs/train/cmnist/vits16.yaml \
+  --eval_fname configs/eval/cmnist/eval_dinov2.yaml \
+  --dataset cmnist \
+  train.seed="${SEED}" \
+  lcal.mode='constant' \
+  lcal.tau_start=5.493852453 \
+  lcal.tau_end=4.752734003519656 \
+  lcal.warmup_iterations=147 \
+  lcal.loss_weight=5.277001568616909
+#6.234970902991114

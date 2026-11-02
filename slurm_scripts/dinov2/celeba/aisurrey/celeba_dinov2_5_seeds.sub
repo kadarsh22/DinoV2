@@ -46,7 +46,4 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
   --output_dir /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/celeba \
   --dataset_path /mnt/fast/nobackup/users/ak03476/data/celebA \
   train.seed="${SEED}" \
-  lcal.tau_start=8.5 \
-  lcal.tau_end=3.5 \
-  lcal.warmup_iterations=100 \
   lcal.loss_weight=1.0

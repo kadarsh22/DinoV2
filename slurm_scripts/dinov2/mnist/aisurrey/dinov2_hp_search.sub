@@ -1,66 +1,67 @@
 #!/bin/bash
-#SBATCH --job-name=dino_cmnist_hp
+#SBATCH --job-name=dino_cmnist_adaptive24
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
-#SBATCH --partition=3090,3090_risk,2080ti
+#SBATCH --partition=3090,3090_risk,2080ti,rtx5000,rtx8000,rtx_a6000_risk,rtx_pro6000_risk
 #SBATCH --time=24:00:00
-#SBATCH --array=0-63
+#SBATCH --array=0-23
 #SBATCH -o slurm_outputs/cmnist/hp_search/%x_%A_%a.out
 #SBATCH -e slurm_outputs/cmnist/hp_search/%x_%A_%a.err
 
 set -euo pipefail
-mkdir -p slurm_outputs
 
-# -----------------------------
-# Hyperparameter grid
-# -----------------------------
-TAU_START_LIST=(2.0 1.8 2.5 3.0)
-TAU_END_LIST=(0.2 0.1 0.4 0.5)
-WARMUP_ITERS_LIST=(20 50 100 400)
+REPO_ROOT="${REPO_ROOT:-/mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2}"
+PYTHON_BIN="${PYTHON_BIN:-/mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/python}"
+DATASET_PATH="${DATASET_PATH:-/mnt/fast/nobackup/users/ak03476/data/ColoredMNIST-Skewed0.9-Severity1}"
+SWEEP_ROOT="${SWEEP_ROOT:-${REPO_ROOT}/outputs/cmnist_adaptive24_${SLURM_ARRAY_JOB_ID:-manual}}"
 
-# Total combos
-NS=${#TAU_START_LIST[@]}
-NE=${#TAU_END_LIST[@]}
-NW=${#WARMUP_ITERS_LIST[@]}
-TOTAL=$((NS * NE * NW))
+# Exactly 6 x 4 unique configurations, all with the same training seed.
+HARD_FRACTIONS=(0.1 0.2 0.3 0.4 0.5 0.7)
+LOSS_WEIGHTS=(0.1 0.5 1.0 5.0)
+TOTAL=$(( ${#HARD_FRACTIONS[@]} * ${#LOSS_WEIGHTS[@]} ))
+TASK_ID="${SLURM_ARRAY_TASK_ID:?Set SLURM_ARRAY_TASK_ID to a value from 0 to 23}"
+if [[ ! "$TASK_ID" =~ ^[0-9]+$ ]] || (( TASK_ID >= TOTAL )); then
+    echo "Invalid array index: ${TASK_ID}; expected 0-$((TOTAL - 1))" >&2
+    exit 1
+fi
+HARD_FRACTION="${HARD_FRACTIONS[$((TASK_ID / ${#LOSS_WEIGHTS[@]}))]}"
+LOSS_WEIGHT="${LOSS_WEIGHTS[$((TASK_ID % ${#LOSS_WEIGHTS[@]}))]}"
+RUN_DIR="${SWEEP_ROOT}/trial_${TASK_ID}"
+RUN_NAME="cmnist_adaptive24_t${TASK_ID}_hard${HARD_FRACTION}_weight${LOSS_WEIGHT}"
 
-# Guard: array size must match TOTAL
-if [[ "${SLURM_ARRAY_TASK_ID}" -ge "${TOTAL}" ]]; then
-  echo "SLURM_ARRAY_TASK_ID=${SLURM_ARRAY_TASK_ID} >= TOTAL=${TOTAL} (grid size). Exiting."
-  exit 1
+COMMAND=("${PYTHON_BIN}" -m torch.distributed.run --standalone --nproc_per_node=1
+    main.py --run_name "${RUN_NAME}"
+    --config_file configs/train/cmnist/vits16.yaml
+    --eval_fname configs/eval/cmnist/eval_dinov2.yaml
+    --eval_cache_dir "${RUN_DIR}/cache"
+    --dataset cmnist --dataset_path "${DATASET_PATH}"
+    --output_dir "${RUN_DIR}" --seed 0
+    wandb.project=ijepa-cmnist
+    train.num_workers=4 train.save_best_checkpoint=true
+    "lcal.tau_target_hard_frac=${HARD_FRACTION}"
+    "lcal.loss_weight=${LOSS_WEIGHT}")
+
+printf 'Trial %s/%s: hard fraction=%s, loss weight=%s\n' "$((TASK_ID + 1))" "$TOTAL" "$HARD_FRACTION" "$LOSS_WEIGHT"
+if [[ "${DRY_RUN:-0}" == 1 ]]; then
+    printf '%q ' "${COMMAND[@]}"
+    printf '\n'
+    exit 0
 fi
 
-# Map array index -> (i,j,k)
-tid=${SLURM_ARRAY_TASK_ID}
-i=$(( tid % NS ))
-j=$(( (tid / NS) % NE ))
-k=$(( tid / (NS * NE) ))
-
-TAU_START=${TAU_START_LIST[$i]}
-TAU_END=${TAU_END_LIST[$j]}
-WARMUP_ITERS=${WARMUP_ITERS_LIST[$k]}
-
-
-RUN_NAME="dinov2_cmnist_ours_hp_tauS${TAU_START}_tauE${TAU_END}_wu${WARMUP_ITERS}"
-
-echo "=== Trial ${tid}/${TOTAL} ==="
-echo "tau_start=${TAU_START} tau_end=${TAU_END} warmup_iters=${WARMUP_ITERS}"
-echo "run_name=${RUN_NAME}"
-cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
-export WANDB_RUN_GROUP=cmnist_feature_space
-# -----------------------------
-# Launch (single-node torchrun)
-# -----------------------------
-srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --standalone --nproc_per_node=1 main.py \
-  --run_name "${RUN_NAME}" \
-  --config_file configs/train/cmnist/vits16.yaml \
-  --eval_fname configs/eval/cmnist/eval_dinov2.yaml \
-  --dataset cmnist \
-  lcal.tau_start="${TAU_START}" \
-  lcal.tau_end="${TAU_END}" \
-  lcal.warmup_iterations="${WARMUP_ITERS}" \
-  lcal.loss_weight=1.0
-
+cd "${REPO_ROOT}"
+mkdir -p "${RUN_DIR}"
+# A resubmission cannot silently overwrite a completed trial.
+if [[ -e "${RUN_DIR}/result.json" ]]; then
+    echo "Trial already completed: ${RUN_DIR}"
+    exit 0
+fi
+export WANDB_RUN_GROUP="${WANDB_RUN_GROUP:-cmnist_adaptive24_${SLURM_ARRAY_JOB_ID:-manual}}"
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}"
+export MPLBACKEND=Agg
+# Use the environment's CUDA 12.8 PyTorch/xFormers, including Blackwell support.
+# User-site packages otherwise shadow them with a CUDA 12.6 installation.
+export PYTHONNOUSERSITE=1
+srun "${COMMAND[@]}"

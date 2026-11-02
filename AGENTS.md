@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 
 - `main.py` launches self-supervised training and Optuna searches.
-- `src/` contains the experiment trainer, student/teacher architecture, and optimizer helpers; `models/tau_scheduler.py` supplies temperature scheduling.
+- `src/` contains the experiment trainer, student/teacher architecture, and optimizer helpers; `models/tau_scheduler.py` supplies adaptive threshold control.
 - `dinov2/` contains the DINOv2 backbone, layers, losses, datasets, distributed utilities, and upstream evaluation code.
 - `evals/` implements experiment-specific linear probes; `utils/` handles configuration, reproducibility, attributes, and visualization.
 - `configs/train/` and `configs/eval/` hold dataset-specific YAML settings for ColoredMNIST, CelebA, dSprites, and Shapes3D. Shared defaults live in `dinov2/configs/ssl_default_config.yaml`.

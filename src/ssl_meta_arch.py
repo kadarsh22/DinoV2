@@ -353,8 +353,7 @@ class SSLMetaArch(nn.Module):
 
                 logp = F.log_softmax(student_logits / self.ibot_patch_loss.student_temp, dim=-1)  # [M,K]
                 dist = -(teacher_probs * logp).sum(dim=-1)  # [M]  (lower = better, higher = weirder)
-                if callable(tau):
-                    tau = tau(dist)
+                tau = tau(dist)
                 # dist = (dist / math.log(256)).clamp(0, 1)   # 0 good, 1 bad-ish
                 correct = (dist < tau).to(dtype=v_logits.dtype).unsqueeze(-1)  # [M,1]
 

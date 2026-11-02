@@ -10,7 +10,7 @@ from dinov2.logging import MetricLogger
 from utils.distributed import is_main_process
 from src.utils.logging import AverageMeter
 from evals.evaluator import Evaluator
-from models.tau_scheduler import TauFixedIterScheduler, TauFixedIterConfig
+from models.tau_scheduler import TauAdaptiveScheduler, TauAdaptiveConfig
 
 
 class Trainer:
@@ -27,13 +27,10 @@ class Trainer:
         OFFICIAL_EPOCH_LENGTH = train_params.train.OFFICIAL_EPOCH_LENGTH
         self.max_iter = train_params.optim.epochs * OFFICIAL_EPOCH_LENGTH
 
-        self.tau_sched = TauFixedIterScheduler(TauFixedIterConfig(
-                                                    mode=self.train_params.lcal.mode,
-                                                    tau_start=self.train_params.lcal.tau_start,
-                                                    tau_end=self.train_params.lcal.tau_end,
-                                                    total_iters=self.max_iter,
-                                                    warmup_iters=self.train_params.lcal.warmup_iterations,
-                                                ))
+        self.tau_sched = TauAdaptiveScheduler(TauAdaptiveConfig(
+            target_hard_frac=train_params.lcal.tau_target_hard_frac,
+            lr_tau=train_params.lcal.tau_lr,
+        ))
 
         self.unsupervised_loader = unsupervised_loader
         self.unsupervised_sampler = unsupervised_sampler
@@ -79,13 +76,16 @@ class Trainer:
             mom = self.momentum_schedule[self.iteration]
             teacher_temp = self.teacher_temp_schedule[self.iteration]
             last_layer_lr = self.last_layer_lr_schedule[self.iteration]
-            tau = self.tau_sched.tau(self.iteration)
             self.apply_optim_scheduler(lr, wd, last_layer_lr)
 
             # compute losses
 
             self.optimizer.zero_grad(set_to_none=True)
-            loss_dict = self.model.forward_backward(data, teacher_temp=teacher_temp, tau=tau)
+            # Adaptive tau is initialized inside the loss once errors exist.
+            loss_dict = self.model.forward_backward(
+                data, teacher_temp=teacher_temp, tau=self.tau_sched.threshold,
+            )
+            tau = self.tau_sched.tau()
 
             # clip gradients
 
@@ -106,6 +106,21 @@ class Trainer:
 
             self.model.update_teacher(mom)
 
+            # Use a global patch-count-weighted fraction so all ranks update
+            # the same threshold, even with unequal numbers of masked patches.
+            hard_frac = loss_dict.pop("lcal_hard_frac", None)
+            if hard_frac is not None:
+                observed = torch.stack([
+                    hard_frac.detach() * data["mask_indices_list"].numel(),
+                    hard_frac.new_tensor(float(data["mask_indices_list"].numel())),
+                ])
+                if dist.is_initialized():
+                    dist.all_reduce(observed)
+                if observed[1].item() > 0:
+                    hard_frac = (observed[0] / observed[1]).item()
+                    self.tau_sched.update(max(0.01, min(0.99, hard_frac)))
+                    self.metric_logger.update(lcal_hard_frac=hard_frac)
+
             # logging
 
             if distributed.get_global_size() > 1:
@@ -121,7 +136,8 @@ class Trainer:
             self.metric_logger.update(lr=lr)
             self.metric_logger.update(wd=wd)
             self.metric_logger.update(mom=mom)
-            self.metric_logger.update(tau=tau)
+            if tau is not None:
+                self.metric_logger.update(tau=tau)
             self.metric_logger.update(last_layer_lr=last_layer_lr)
             self.metric_logger.update(current_batch_size=current_batch_size)
             self.metric_logger.update(total_loss=losses_reduced, **loss_dict_reduced)
@@ -136,9 +152,12 @@ class Trainer:
                     "train/koleo_loss": self.metric_logger.meters["koleo_loss"].avg,
                     "train/lr": self.metric_logger.meters["lr"].value,
                     "train/wd": self.metric_logger.meters["wd"].value,
-                    "train/tau": self.metric_logger.meters["tau"].value,
                     "train/iteration": self.iteration,
                 }
+                if "tau" in self.metric_logger.meters:
+                    log_payload["train/tau"] = self.metric_logger.meters["tau"].value
+                if "lcal_hard_frac" in self.metric_logger.meters:
+                    log_payload["train/lcal_hard_frac"] = self.metric_logger.meters["lcal_hard_frac"].avg
 
                 m = self.metric_logger.meters.get("L_cal", None)  # or "l_cal" depending on your key
                 if m is not None and getattr(m, "count", 0) > 0:
@@ -167,8 +186,16 @@ class Trainer:
                 )
                 eval_metrics = evaluator.train_and_eval_probe(self.iteration)
                 eval_metrics["iteration"] = self.iteration
-                metric = eval_metrics['eval/eval_attr_avg_top1']
-                self.best_eval_metric = metric
+                metric = float(eval_metrics['eval/eval_attr_avg_top1'])
+                if not math.isfinite(metric):
+                    raise ValueError("Probe score must be finite")
+                improved = metric > getattr(self, "best_eval_metric", -math.inf)
+                if improved:
+                    self.best_eval_metric = metric
+                    self.best_eval_iteration = self.iteration
+                    self.best_eval_metrics = dict(eval_metrics)
+                if improved and self.train_params.train.get("save_best_checkpoint", False):
+                    self._save_best_backbone(backbone_fsdp, eval_metrics)
                 if is_main_process():
                     wandb.log(eval_metrics)
 
@@ -198,6 +225,25 @@ class Trainer:
 
         # if (epoch + 1) % params['meta']['save_every'] == 0:
         #     trainer._save_snapshot(epoch)
+
+    def _save_best_backbone(self, backbone, metrics):
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+        from torch.distributed.fsdp import FullStateDictConfig, StateDictType
+
+        # Every rank participates in gathering; only rank zero writes.
+        config = FullStateDictConfig(
+            offload_to_cpu=distributed.get_global_size() > 1, rank0_only=True,
+        )
+        with FSDP.state_dict_type(backbone, StateDictType.FULL_STATE_DICT, config):
+            state = backbone.state_dict()
+        if is_main_process():
+            destination = os.path.join(self.train_params.train.output_dir, "best_backbone.pth")
+            torch.save({
+                "backbone": {key: value.cpu() for key, value in state.items()},
+                "iteration": self.iteration,
+                "metrics": dict(metrics),
+            }, destination + ".tmp")
+            os.replace(destination + ".tmp", destination)
 
     def apply_optim_scheduler(self, lr, wd, last_layer_lr):
         for param_group in self.optimizer.param_groups:

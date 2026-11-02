@@ -35,7 +35,4 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --stan
     --eval_fname configs/eval/cmnist/eval_dinov2.yaml \
     --run_name "dinov2_cmnist_baseline" \
     --dataset cmnist \
-    lcal.tau_start=2.0 \
-    lcal.tau_end=1.0 \
-    lcal.warmup_iterations=1000 \
     lcal.loss_weight=0.0

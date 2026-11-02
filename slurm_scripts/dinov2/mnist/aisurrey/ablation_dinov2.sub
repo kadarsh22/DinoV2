@@ -46,9 +46,5 @@ srun --cpu-bind=none /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin
   --eval_fname configs/eval/cmnist/eval_dinov2.yaml \
   --dataset cmnist \
   train.seed="${SEED}" \
-  lcal.mode='constant' \
-  lcal.tau_start=5.493852453 \
-  lcal.tau_end=4.752734003519656 \
-  lcal.warmup_iterations=147 \
   lcal.loss_weight=5.277001568616909
 #6.234970902991114

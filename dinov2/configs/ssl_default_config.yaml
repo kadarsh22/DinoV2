@@ -59,11 +59,8 @@ ibot:
   head_nlayers: 3
   head_hidden_dim: 2048
 lcal:
-  mode: adaptive
   loss_weight: 0.0
-  tau_end: 0.1
-  warmup_iterations: 10
-  # Used only by mode=adaptive; tau updates directly without smoothing or bounds.
+  # Tau updates directly without smoothing or bounds.
   tau_target_hard_frac: 0.3
   tau_lr: 0.01
 train:

@@ -3,6 +3,7 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 os.environ["PYTHONHASHSEED"] = "0"
 
 import argparse
+import json
 import pprint
 import hydra
 import torch
@@ -17,7 +18,7 @@ from dinov2.data.datasets.data_loader import build_dataloaders
 from src.helper import build_optimizer, build_schedulers
 from src.ssl_meta_arch import SSLMetaArch
 from src.trainer import Trainer
-from utils.config import setup
+from utils.config import setup, write_config
 from utils.distributed import ddp_setup, is_main_process, set_seed_custom
 from utils.utils import load_yaml
 from utils.visualisation import plot_crops_from_dataset
@@ -36,12 +37,18 @@ def main(args):
             train_params.train.seed = int(args.seed)
             train_params.train.dataset_path = args.dataset_path
             eval_params = load_yaml(args.eval_fname)
+            if args.eval_cache_dir is not None:
+                eval_params["meta"]["cache_dir"] = args.eval_cache_dir
             if trial is not None:
-                train_params.lcal.tau_start = trial.suggest_float("tau_start", 5.5, 9.5)
-                train_params.lcal.tau_end = trial.suggest_float("tau_end",2.5, 5.0)
-                train_params.lcal.warmup_iterations = trial.suggest_int("warmup_iters", 100, 500, log=False)
+                train_params.lcal.tau_target_hard_frac = trial.suggest_float("tau_target_hard_frac", 0.1, 0.7)
                 train_params.lcal.loss_weight = trial.suggest_float("loss_weight", 1, 6,
                                                                     log=True)  # change key if different
+
+            # Persist the effective configuration, including actual data paths.
+            write_config(train_params, args.output_dir)
+            if is_main_process():
+                with open(os.path.join(args.output_dir, "eval_config.yaml"), "w") as handle:
+                    OmegaConf.save(OmegaConf.create(eval_params), handle)
 
             if is_main_process():
                 pprint.pprint(eval_params)
@@ -49,7 +56,9 @@ def main(args):
             if is_main_process():
                 wandb_cfg = OmegaConf.to_container(train_params, resolve=True)
                 run_name = args.run_name if trial is None else f"{args.run_name}-t{trial.number}"
-                wandb.init(project=train_params.wandb.project, name=run_name, config=wandb_cfg)
+                wandb.init(project=train_params.wandb.project,
+                           entity=train_params.wandb.get("entity"),
+                           name=run_name, config=wandb_cfg, dir=args.output_dir)
                 wandb.run.log_code('.')
 
             (unsupervised_loader, unsupervised_sampler,
@@ -97,6 +106,22 @@ def main(args):
             best = getattr(trainer, "best_eval_metric", None)
             if best is None:
                 raise RuntimeError("Expose trainer.best_eval_metric (e.g. best eval/eval_attr_avg_top1) for Optuna.")
+            if is_main_process():
+                result = {
+                    "run_name": run_name,
+                    "seed": int(args.seed),
+                    "dataset_path": args.dataset_path,
+                    "metric": "eval/eval_attr_avg_top1",
+                    "best_score": float(best),
+                    "best_iteration": trainer.best_eval_iteration,
+                    "best_metrics": trainer.best_eval_metrics,
+                    "lcal": OmegaConf.to_container(train_params.lcal, resolve=True),
+                    "training_iterations": max_iter,
+                }
+                temporary = os.path.join(args.output_dir, "result.json.tmp")
+                with open(temporary, "w") as handle:
+                    json.dump(result, handle, indent=2, allow_nan=False)
+                os.replace(temporary, os.path.join(args.output_dir, "result.json"))
             return float(best)
 
         if not getattr(args, "hpo", False):
@@ -168,6 +193,8 @@ if __name__ == "__main__":
         default="configs/eval/cmnist/eval_dinov2.yaml",
         help="Path to evaluation config file",
     )
+    parser.add_argument("--eval_cache_dir", default=None,
+                        help="Override probe cache directory; use a distinct path for each run")
 
     # ---------------------------
     # Run / logging

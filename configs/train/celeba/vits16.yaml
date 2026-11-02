@@ -10,10 +10,7 @@ ibot:
   head_n_prototypes: 2048
   head_nlayers: 3
 lcal:
-  mode: adaptive
   loss_weight: 0.0
-  tau_end: 0.9
-  warmup_iterations: 7890
 train:
   batch_size_per_gpu: 64
   dataset_path: ImageNet22k

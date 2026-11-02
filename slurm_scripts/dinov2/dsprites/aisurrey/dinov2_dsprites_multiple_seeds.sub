@@ -31,17 +31,11 @@ fi
 SEED=${SEED_LIST[$SLURM_ARRAY_TASK_ID]}
 
 # Keep your hyperparams fixed (edit these if you want a single chosen setting)
-TAU_START=2.4
-TAU_END=0.1
-WARMUP_ITERS=200
 
-RUN_NAME="dinov2_dsprites_ours_seed${SEED}_tauS${TAU_START}_tauE${TAU_END}_wu${WARMUP_ITERS}"
+RUN_NAME="dinov2_dsprites_ours_adaptive_seed${SEED}"
 
 echo "=== Seed trial ${SLURM_ARRAY_TASK_ID}/${NSEEDS} ==="
 echo "seed=${SEED}"
-echo "tau_start=${TAU_START}"
-echo "tau_end=${TAU_END}"
-echo "warmup_iters=${WARMUP_ITERS}"
 echo "run_name=${RUN_NAME}"
 
 cd /mnt/fast/nobackup/users/ak03476/PycharmProjects/DinoV2
@@ -60,7 +54,4 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun \
   --output_dir /mnt/fast/nobackup/scratch4weeks/ak03476/dinov2_outputs/dsprites \
   --dataset_path /mnt/fast/nobackup/users/ak03476/data/dsprites/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz \
   seed="${SEED}" \
-  lcal.tau_start="${TAU_START}" \
-  lcal.tau_end="${TAU_END}" \
-  lcal.warmup_iterations="${WARMUP_ITERS}" \
   lcal.loss_weight=0.0

@@ -46,9 +46,6 @@ srun /mnt/fast/nobackup/users/ak03476/miniconda3/envs/dinov2/bin/torchrun --stan
   --eval_fname configs/eval/cmnist/eval_dinov2.yaml \
   --dataset cmnist \
   train.seed="${SEED}" \
-  lcal.tau_start=1.8 \
-  lcal.tau_end=0.5 \
-  lcal.warmup_iterations=50 \
   lcal.loss_weight=5.0
 
 

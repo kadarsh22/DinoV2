@@ -10,9 +10,10 @@ ibot:
   head_n_prototypes: 512
   head_nlayers: 3
 lcal:
-  mode: cosine
+  # Adaptive tau targets 30% hard patches using the existing DINO error.
+  mode: adaptive
+  tau_target_hard_frac: 0.3
   loss_weight: 5.0
-  tau_start: 1.8
   tau_end: 0.5
   warmup_iterations: 50
 train:
